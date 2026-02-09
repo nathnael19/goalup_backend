@@ -1,8 +1,9 @@
+import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.database import get_session
-from app.models.team import Team, TeamCreate, TeamRead
+from app.models.team import Team, TeamCreate, TeamRead, TeamUpdate
 from app.models.standing import Standing
 from app.models.tournament import Tournament
 
@@ -31,3 +32,18 @@ def create_team(*, session: Session = Depends(get_session), team: TeamCreate):
 def read_teams(session: Session = Depends(get_session)):
     teams = session.exec(select(Team)).all()
     return teams
+
+@router.put("/{team_id}", response_model=TeamRead)
+def update_team(
+    *, session: Session = Depends(get_session), team_id: uuid.UUID, team: TeamUpdate
+):
+    db_team = session.get(Team, team_id)
+    if not db_team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    team_data = team.model_dump(exclude_unset=True)
+    for key, value in team_data.items():
+        setattr(db_team, key, value)
+    session.add(db_team)
+    session.commit()
+    session.refresh(db_team)
+    return db_team

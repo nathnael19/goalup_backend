@@ -18,6 +18,11 @@ class Team(TeamBase, table=True):
 class TeamCreate(TeamBase):
     tournament_id: uuid.UUID
 
+class TeamUpdate(SQLModel):
+    name: Optional[str] = None
+    batch: Optional[str] = None
+    logo_url: Optional[str] = None
+
 class TeamRead(TeamBase):
     id: uuid.UUID
 
