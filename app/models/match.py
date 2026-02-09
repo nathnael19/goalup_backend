@@ -1,18 +1,41 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from enum import Enum
+from typing import Optional, List
 from sqlmodel import Field, SQLModel, Relationship
 
-class Match(SQLModel, table=True):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+class MatchStatus(str, Enum):
+    scheduled = "scheduled"
+    live = "live"
+    finished = "finished"
+
+class MatchBase(SQLModel):
     tournament_id: uuid.UUID = Field(foreign_key="tournament.id")
     team_a_id: uuid.UUID = Field(foreign_key="team.id")
     team_b_id: uuid.UUID = Field(foreign_key="team.id")
     score_a: int = Field(default=0)
     score_b: int = Field(default=0)
-    status: str = Field(default="scheduled") # enum: scheduled, live, finished
+    status: MatchStatus = Field(default=MatchStatus.scheduled)
     start_time: datetime
+
+class Match(MatchBase, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
 
     tournament: "Tournament" = Relationship(back_populates="matches")
     team_a: "Team" = Relationship(back_populates="home_matches", sa_relationship_kwargs={"foreign_keys": "Match.team_a_id"})
     team_b: "Team" = Relationship(back_populates="away_matches", sa_relationship_kwargs={"foreign_keys": "Match.team_b_id"})
+
+class MatchCreate(MatchBase):
+    pass
+
+class MatchRead(MatchBase):
+    id: uuid.UUID
+
+class MatchUpdate(SQLModel):
+    tournament_id: Optional[uuid.UUID] = None
+    team_a_id: Optional[uuid.UUID] = None
+    team_b_id: Optional[uuid.UUID] = None
+    score_a: Optional[int] = None
+    score_b: Optional[int] = None
+    status: Optional[MatchStatus] = None
+    start_time: Optional[datetime] = None
