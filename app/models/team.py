@@ -8,6 +8,7 @@ class TeamBase(SQLModel):
     name: str = Field(index=True)
     batch: str
     logo_url: Optional[str] = None
+    color: Optional[str] = None
 
 class Team(TeamBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -30,8 +31,16 @@ class TeamRead(TeamBase):
     id: uuid.UUID
 
 from app.models.tournament import Tournament
+from app.models.player import PlayerRead
+from app.models.standing import StandingRead
+from app.models.match import MatchRead
 
 class TeamReadWithTournaments(TeamRead):
     tournaments: List[Tournament] = []
+
+class TeamReadDetail(TeamRead):
+    players: List[PlayerRead] = []
+    standings: List[StandingRead] = []
+    matches: List[MatchRead] = []
 
 

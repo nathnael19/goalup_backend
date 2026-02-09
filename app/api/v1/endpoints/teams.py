@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.database import get_session
-from app.models.team import Team, TeamCreate, TeamRead, TeamUpdate, TeamReadWithTournaments
+from app.models.team import Team, TeamCreate, TeamRead, TeamUpdate, TeamReadWithTournaments, TeamReadDetail
 from app.models.standing import Standing
 from app.models.tournament import Tournament
 
@@ -33,12 +33,24 @@ def read_teams(session: Session = Depends(get_session)):
     teams = session.exec(select(Team)).all()
     return teams
 
-@router.get("/{team_id}", response_model=TeamReadWithTournaments)
+@router.get("/{team_id}", response_model=TeamReadDetail)
 def read_team(*, session: Session = Depends(get_session), team_id: uuid.UUID):
     team = session.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
-    return team
+    
+    # Combine home and away matches
+    all_matches = team.home_matches + team.away_matches
+    # Sort by start_time descending
+    all_matches.sort(key=lambda x: x.start_time, reverse=True)
+    
+    # Create the detailed response
+    response_data = team.model_dump()
+    response_data["players"] = team.players
+    response_data["standings"] = team.standings
+    response_data["matches"] = all_matches
+    
+    return response_data
 
 @router.put("/{team_id}", response_model=TeamRead)
 def update_team(
