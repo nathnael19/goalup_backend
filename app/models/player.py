@@ -49,3 +49,22 @@ class PlayerCreate(PlayerBase):
 
 class PlayerRead(PlayerBase):
     id: uuid.UUID
+
+class PlayerUpdate(SQLModel):
+    name: Optional[str] = None
+    team_id: Optional[uuid.UUID] = None
+    jersey_number: Optional[int] = None
+    position: Optional[Position] = None
+    goals: Optional[int] = None
+    yellow_cards: Optional[int] = None
+    red_cards: Optional[int] = None
+
+    @field_validator("position", mode="before")
+    @classmethod
+    def lowercase_position(cls, v: str) -> str:
+        if isinstance(v, str):
+            v = v.lower()
+            return v
+        if isinstance(v, Position):
+            return v.value.lower()
+        return v
