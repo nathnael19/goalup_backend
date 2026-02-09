@@ -1,34 +1,69 @@
 import uuid
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select, func
+from sqlmodel import Session, select, func, SQLModel
 from app.core.database import get_session
 from app.models.standing import Standing, StandingRead
 from app.models.match import Match, MatchStatus
-from app.models.team import Team
-from app.models.tournament import Tournament
+from app.models.team import Team, TeamRead
+from app.models.tournament import Tournament, TournamentRead
 
 router = APIRouter()
 
-@router.get("/{tournament_id}", response_model=List[StandingRead])
+class TeamStandingRead(StandingRead):
+    team: Optional[TeamRead] = None
+
+class GroupedTournamentStandings(SQLModel):
+    tournament: TournamentRead
+    teams: List[TeamStandingRead]
+
+@router.get("/", response_model=List[GroupedTournamentStandings])
+def read_standings(session: Session = Depends(get_session)):
+    tournaments = session.exec(select(Tournament)).all()
+    result = []
+    
+    for t in tournaments:
+        standings = session.exec(
+            select(Standing)
+            .where(Standing.tournament_id == t.id)
+            .order_by(Standing.points.desc(), (Standing.goals_for - Standing.goals_against).desc())
+        ).all()
+        
+        team_standings = []
+        for s in standings:
+            ts = TeamStandingRead.model_validate(s)
+            ts.team = session.get(Team, s.team_id)
+            team_standings.append(ts)
+            
+        result.append(GroupedTournamentStandings(
+            tournament=t,
+            teams=team_standings
+        ))
+        
+    return result
+
+@router.get("/{tournament_id}", response_model=GroupedTournamentStandings)
 def get_tournament_standings(*, session: Session = Depends(get_session), tournament_id: uuid.UUID):
     tournament = session.get(Tournament, tournament_id)
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
     
     standings = session.exec(
-        select(Standing).where(Standing.tournament_id == tournament_id).order_by(Standing.points.desc(), (Standing.goals_for - Standing.goals_against).desc())
+        select(Standing)
+        .where(Standing.tournament_id == tournament_id)
+        .order_by(Standing.points.desc(), (Standing.goals_for - Standing.goals_against).desc())
     ).all()
     
-    # Enrich with team names
-    result = []
+    team_standings = []
     for s in standings:
-        team = session.get(Team, s.team_id)
-        sr = StandingRead.model_validate(s)
-        sr.team_name = team.name if team else "Unknown"
-        result.append(sr)
+        ts = TeamStandingRead.model_validate(s)
+        ts.team = session.get(Team, s.team_id)
+        team_standings.append(ts)
         
-    return result
+    return GroupedTournamentStandings(
+        tournament=tournament,
+        teams=team_standings
+    )
 
 @router.post("/{tournament_id}/recalculate")
 def recalculate_standings(*, session: Session = Depends(get_session), tournament_id: uuid.UUID):
@@ -37,8 +72,6 @@ def recalculate_standings(*, session: Session = Depends(get_session), tournament
         raise HTTPException(status_code=404, detail="Tournament not found")
     
     # Get all teams in this tournament
-    # We can get them from the link model or just from matches
-    # Better to get them from the tournament.teams relationship
     teams = tournament.teams
     
     # Reset or clear existing standings for this tournament
@@ -93,8 +126,3 @@ def recalculate_standings(*, session: Session = Depends(get_session), tournament
         
     session.commit()
     return {"ok": True, "teams_processed": len(stats)}
-
-@router.get("/", response_model=List[Standing])
-def read_standings(session: Session = Depends(get_session)):
-    standings = session.exec(select(Standing)).all()
-    return standings

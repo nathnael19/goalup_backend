@@ -21,4 +21,3 @@ class Standing(StandingBase, table=True):
 
 class StandingRead(StandingBase):
     id: uuid.UUID
-    team_name: Optional[str] = None # Added for convenience in frontend

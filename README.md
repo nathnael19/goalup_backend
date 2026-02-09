@@ -1,60 +1,103 @@
-# Backend Setup Walkthrough
+# ASTU Football App - Backend
 
-## Prerequisites
+A robust backend for managing football tournaments, teams, players, matches, and standings. Built with FastAPI, SQLModel (SQLAlchemy + Pydantic), and PostgreSQL.
 
-- Python 3.9+
+## Features
+
+- **Tournament Management**: Create, view, update, and delete tournaments.
+- **Team Management**: Manage teams within tournaments, including automatic standing initialization.
+- **Player Management**:
+  - Unique jersey numbers per team.
+  - Case-insensitive position handling.
+  - Full CRUD operations.
+- **Match Management**:
+  - Track match status (scheduled, live, finished).
+  - Update scores and status.
+- **Automated Standings**:
+  - Grouped by tournament.
+  - Enriched with team and tournament details.
+  - Manual recalculation endpoint for data integrity.
+
+## Tech Stack
+
+- **Framework**: [FastAPI](https://fastapi.tiangolo.com/)
+- **ORM**: [SQLModel](https://sqlmodel.tiangolo.com/)
+- **Database**: [PostgreSQL](https://www.postgresql.org/)
+- **Migrations**: [Alembic](https://alembic.sqlalchemy.org/)
+- **Validation**: [Pydantic v2](https://docs.pydantic.dev/latest/)
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.10+
 - PostgreSQL
 
-## Setup Instructions
+### Installation
 
-1.  **Navigate to the backend directory:**
+1. **Clone the repository**:
 
-    ```bash
-    cd backend
-    ```
+   ```bash
+   git clone <repository-url>
+   cd Football/backend
+   ```
 
-2.  **Activate virtual environment:**
+2. **Set up a virtual environment**:
 
-    ```bash
-    # Windows
-    venv\Scripts\activate
-    # macOS/Linux
-    source venv/bin/activate
-    ```
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
 
-3.  **Install dependencies:**
+3. **Install dependencies**:
 
-    ```bash
-    pip install -r requirements.txt
-    ```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-4.  **Configure Environment Variables:**
-    - Ensure `.env` exists and contains:
-      ```
-      DATABASE_URL=postgresql://user:password@localhost/dbname
-      SECRET_KEY=change_this_secret_key
-      ```
-    - **Note:** `SECRET_KEY` is required for the application to start.
+4. **Configure Environment Variables**:
+   Create a `.env` file in the `backend/` directory:
 
-5.  **Initialize Database:**
-    - The application will attempt to create tables on startup.
-    - To use migrations with Alembic:
-      ```bash
-      alembic revision --autogenerate -m "Initial migration"
-      alembic upgrade head
-      ```
+   ```env
+   DATABASE_URL=postgresql://user:password@localhost:5432/db_name
+   SECRET_KEY=your_secret_key
+   ```
 
-6.  **Run the Server:**
+5. **Run Migrations**:
 
-    ```bash
-    fastapi dev
-    # OR
-    uvicorn app.main:app --reload
-    ```
+   ```bash
+   alembic upgrade head
+   ```
 
-7.  **Access Documentation:**
-    - Open `http://127.0.0.1:8000/docs` to view the Swagger UI.
+6. **Start the Development Server**:
+   ```bash
+   fastapi dev
+   ```
+   Access the API documentation at `http://127.0.0.1:8000/docs`.
 
-## Troubleshooting
+## Project Structure
 
-- If you see `ValidationError` for `Settings`, ensure `SECRET_KEY` is present in `.env` and `config.py` (Fixed in this setup).
+```text
+backend/
+├── alembic/            # Database migrations
+├── app/
+│   ├── api/            # API v1 routes and endpoints
+│   ├── core/           # Configuration and database setup
+│   ├── models/         # SQLModel database schemas
+│   └── main.py         # App entry point
+├── .env                # Environment variables (not tracked)
+├── alembic.ini         # Alembic configuration
+└── requirements.txt    # Project dependencies
+```
+
+## API Documentation
+
+The API follows standard RESTful principles. Key endpoints include:
+
+- `/api/v1/tournaments/`
+- `/api/v1/teams/`
+- `/api/v1/players/`
+- `/api/v1/matches/`
+- `/api/v1/standings/`
+
+Detailed documentation and interactive testing are available via Swagger UI (`/docs`).

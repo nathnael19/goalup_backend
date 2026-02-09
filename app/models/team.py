@@ -12,10 +12,10 @@ class TeamBase(SQLModel):
 class Team(TeamBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
 
-    players: List["Player"] = Relationship(back_populates="team")
+    players: List["Player"] = Relationship(back_populates="team", cascade_delete=True)
     home_matches: List["Match"] = Relationship(back_populates="team_a", sa_relationship_kwargs={"foreign_keys": "Match.team_a_id"})
     away_matches: List["Match"] = Relationship(back_populates="team_b", sa_relationship_kwargs={"foreign_keys": "Match.team_b_id"})
-    standings: List["Standing"] = Relationship(back_populates="team", sa_relationship_kwargs={"overlaps": "teams"})
+    standings: List["Standing"] = Relationship(back_populates="team", cascade_delete=True, sa_relationship_kwargs={"overlaps": "teams"})
     tournaments: List["Tournament"] = Relationship(back_populates="teams", link_model=Standing, sa_relationship_kwargs={"overlaps": "standings,team,tournament"})
 
 class TeamCreate(TeamBase):

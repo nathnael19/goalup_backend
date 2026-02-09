@@ -9,9 +9,29 @@ from app.models.tournament import Tournament
 
 router = APIRouter()
 
-@router.get("/", response_model=List[Match])
-def read_matches(session: Session = Depends(get_session)):
-    matches = session.exec(select(Match)).all()
+@router.post("/", response_model=MatchRead)
+def create_match(*, session: Session = Depends(get_session), match: MatchCreate):
+    # Verify tournament and teams exist
+    tournament = session.get(Tournament, match.tournament_id)
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    
+    team_a = session.get(Team, match.team_a_id)
+    team_b = session.get(Team, match.team_b_id)
+    if not team_a or not team_b:
+        raise HTTPException(status_code=404, detail="One or both teams not found")
+        
+    db_match = Match.model_validate(match)
+    session.add(db_match)
+    session.commit()
+    session.refresh(db_match)
+    return db_match
+
+@router.get("/", response_model=List[MatchRead])
+def read_matches(
+    *, session: Session = Depends(get_session), offset: int = 0, limit: int = 100
+):
+    matches = session.exec(select(Match).offset(offset).limit(limit)).all()
     return matches
 
 @router.get("/{match_id}", response_model=MatchRead)

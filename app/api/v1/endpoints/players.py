@@ -8,6 +8,45 @@ from app.models.team import Team
 
 router = APIRouter()
 
+@router.post("/", response_model=PlayerRead)
+def create_player(*, session: Session = Depends(get_session), player: PlayerCreate):
+    # Manual lowercase to handle any potential Enum/SQLAlchemy mismatch
+    player.position = player.position.lower()
+    
+    # Check if jersey number is unique for the team
+    existing_player = session.exec(
+        select(Player).where(
+            Player.team_id == player.team_id,
+            Player.jersey_number == player.jersey_number
+        )
+    ).first()
+    if existing_player:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Jersey number {player.jersey_number} is already taken in this team"
+        )
+    
+    team = session.get(Team, player.team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    db_player = Player.model_validate(player)
+    session.add(db_player)
+    session.commit()
+    session.refresh(db_player)
+    return db_player
+
+@router.get("/", response_model=List[PlayerRead])
+def read_players(session: Session = Depends(get_session)):
+    players = session.exec(select(Player)).all()
+    return players
+
+@router.get("/{player_id}", response_model=PlayerRead)
+def read_player(*, session: Session = Depends(get_session), player_id: uuid.UUID):
+    player = session.get(Player, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="Player not found")
+    return player
+
 @router.put("/{player_id}", response_model=PlayerRead)
 def update_player(
     *, session: Session = Depends(get_session), player_id: uuid.UUID, player: PlayerUpdate
@@ -48,33 +87,6 @@ def update_player(
     session.refresh(db_player)
     return db_player
 
-@router.post("/", response_model=PlayerRead)
-def create_player(*, session: Session = Depends(get_session), player: PlayerCreate):
-    # Manual lowercase to handle any potential Enum/SQLAlchemy mismatch
-    player.position = player.position.lower()
-    
-    # Check if jersey number is unique for the team
-    existing_player = session.exec(
-        select(Player).where(
-            Player.team_id == player.team_id,
-            Player.jersey_number == player.jersey_number
-        )
-    ).first()
-    if existing_player:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Jersey number {player.jersey_number} is already taken in this team"
-        )
-    
-    team = session.get(Team, player.team_id)
-    if not team:
-        raise HTTPException(status_code=404, detail="Team not found")
-    db_player = Player.model_validate(player)
-    session.add(db_player)
-    session.commit()
-    session.refresh(db_player)
-    return db_player
-
 @router.delete("/{player_id}")
 def delete_player(*, session: Session = Depends(get_session), player_id: uuid.UUID):
     db_player = session.get(Player, player_id)
@@ -83,15 +95,3 @@ def delete_player(*, session: Session = Depends(get_session), player_id: uuid.UU
     session.delete(db_player)
     session.commit()
     return {"ok": True}
-
-@router.get("/{player_id}", response_model=PlayerRead)
-def read_player(*, session: Session = Depends(get_session), player_id: uuid.UUID):
-    player = session.get(Player, player_id)
-    if not player:
-        raise HTTPException(status_code=404, detail="Player not found")
-    return player
-
-@router.get("/", response_model=List[PlayerRead])
-def read_players(session: Session = Depends(get_session)):
-    players = session.exec(select(Player)).all()
-    return players

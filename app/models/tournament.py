@@ -12,8 +12,8 @@ class TournamentBase(SQLModel):
 class Tournament(TournamentBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
 
-    matches: List["Match"] = Relationship(back_populates="tournament")
-    standings: List["Standing"] = Relationship(back_populates="tournament")
+    matches: List["Match"] = Relationship(back_populates="tournament", cascade_delete=True)
+    standings: List["Standing"] = Relationship(back_populates="tournament", cascade_delete=True)
     teams: List["Team"] = Relationship(back_populates="tournaments", link_model=Standing, sa_relationship_kwargs={"overlaps": "standings,tournament,team"})
 
 class TournamentCreate(TournamentBase):
