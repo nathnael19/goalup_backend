@@ -16,6 +16,11 @@ class Tournament(TournamentBase, table=True):
 class TournamentCreate(TournamentBase):
     pass
 
+class TournamentUpdate(SQLModel):
+    name: Optional[str] = None
+    year: Optional[int] = None
+    type: Optional[str] = None
+
 class TournamentRead(TournamentBase):
     id: uuid.UUID
 
