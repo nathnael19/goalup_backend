@@ -14,7 +14,7 @@ class Tournament(TournamentBase, table=True):
 
     matches: List["Match"] = Relationship(back_populates="tournament")
     standings: List["Standing"] = Relationship(back_populates="tournament")
-    teams: List["Team"] = Relationship(back_populates="tournaments", link_model=Standing)
+    teams: List["Team"] = Relationship(back_populates="tournaments", link_model=Standing, sa_relationship_kwargs={"overlaps": "standings,tournament,team"})
 
 class TournamentCreate(TournamentBase):
     pass

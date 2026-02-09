@@ -18,7 +18,11 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-from app.models import * # Import all models to register them
+from app.models.tournament import Tournament
+from app.models.team import Team
+from app.models.player import Player
+from app.models.match import Match
+from app.models.standing import Standing
 from sqlmodel import SQLModel
 from app.core.config import settings
 
