@@ -20,6 +20,13 @@ def read_tournaments(session: Session = Depends(get_session)):
     tournaments = session.exec(select(Tournament)).all()
     return tournaments
 
+@router.get("/{tournament_id}", response_model=TournamentRead)
+def read_tournament(*, session: Session = Depends(get_session), tournament_id: uuid.UUID):
+    tournament = session.get(Tournament, tournament_id)
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    return tournament
+
 @router.put("/{tournament_id}", response_model=TournamentRead)
 def update_tournament(
     *, session: Session = Depends(get_session), tournament_id: uuid.UUID, tournament: TournamentUpdate
