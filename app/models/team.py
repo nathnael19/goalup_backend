@@ -9,6 +9,6 @@ class Team(SQLModel, table=True):
     logo_url: Optional[str] = None
 
     players: List["Player"] = Relationship(back_populates="team")
-    home_matches: List["Match"] = Relationship(back_populates="team_a")
-    away_matches: List["Match"] = Relationship(back_populates="team_b")
+    home_matches: List["Match"] = Relationship(back_populates="team_a", sa_relationship_kwargs={"foreign_keys": "Match.team_a_id"})
+    away_matches: List["Match"] = Relationship(back_populates="team_b", sa_relationship_kwargs={"foreign_keys": "Match.team_b_id"})
     standings: List["Standing"] = Relationship(back_populates="team")

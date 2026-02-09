@@ -13,11 +13,13 @@
     cd backend
     ```
 
-2.  **Create a virtual environment:**
+2.  **Activate virtual environment:**
 
     ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows: venv\\Scripts\\activate
+    # Windows
+    venv\Scripts\activate
+    # macOS/Linux
+    source venv/bin/activate
     ```
 
 3.  **Install dependencies:**
@@ -27,8 +29,12 @@
     ```
 
 4.  **Configure Environment Variables:**
-    - Rename `.env` (if it exists as a template) or ensure it has the correct values.
-    - Update `DATABASE_URL` in `.env` to point to your PostgreSQL database.
+    - Ensure `.env` exists and contains:
+      ```
+      DATABASE_URL=postgresql://user:password@localhost/dbname
+      SECRET_KEY=change_this_secret_key
+      ```
+    - **Note:** `SECRET_KEY` is required for the application to start.
 
 5.  **Initialize Database:**
     - The application will attempt to create tables on startup.
@@ -41,8 +47,14 @@
 6.  **Run the Server:**
 
     ```bash
+    fastapi dev
+    # OR
     uvicorn app.main:app --reload
     ```
 
 7.  **Access Documentation:**
     - Open `http://127.0.0.1:8000/docs` to view the Swagger UI.
+
+## Troubleshooting
+
+- If you see `ValidationError` for `Settings`, ensure `SECRET_KEY` is present in `.env` and `config.py` (Fixed in this setup).
