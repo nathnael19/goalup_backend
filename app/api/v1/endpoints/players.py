@@ -75,6 +75,22 @@ def create_player(*, session: Session = Depends(get_session), player: PlayerCrea
     session.refresh(db_player)
     return db_player
 
+@router.delete("/{player_id}")
+def delete_player(*, session: Session = Depends(get_session), player_id: uuid.UUID):
+    db_player = session.get(Player, player_id)
+    if not db_player:
+        raise HTTPException(status_code=404, detail="Player not found")
+    session.delete(db_player)
+    session.commit()
+    return {"ok": True}
+
+@router.get("/{player_id}", response_model=PlayerRead)
+def read_player(*, session: Session = Depends(get_session), player_id: uuid.UUID):
+    player = session.get(Player, player_id)
+    if not player:
+        raise HTTPException(status_code=404, detail="Player not found")
+    return player
+
 @router.get("/", response_model=List[PlayerRead])
 def read_players(session: Session = Depends(get_session)):
     players = session.exec(select(Player)).all()
