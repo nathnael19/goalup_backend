@@ -5,6 +5,10 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     DATABASE_URL: str
     SECRET_KEY: str
+    
+    # JWT Settings
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200  # 30 days
 
     class Config:
         env_file = ".env"
