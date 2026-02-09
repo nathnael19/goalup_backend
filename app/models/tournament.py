@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Optional, List
 from sqlmodel import Field, SQLModel, Relationship
 
@@ -18,6 +19,11 @@ class Tournament(TournamentBase, table=True):
 
 class TournamentCreate(TournamentBase):
     pass
+
+class TournamentScheduleCreate(SQLModel):
+    start_date: datetime
+    interval_days: int = Field(default=1)
+    matches_per_day: int = Field(default=1)
 
 class TournamentUpdate(SQLModel):
     name: Optional[str] = None

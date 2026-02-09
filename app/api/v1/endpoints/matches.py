@@ -1,13 +1,18 @@
 import uuid
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.match import Match, MatchCreate, MatchRead, MatchUpdate
-from app.models.team import Team
-from app.models.tournament import Tournament
+from app.models.team import Team, TeamRead
+from app.models.tournament import Tournament, TournamentRead
 
 router = APIRouter()
+
+class EnrichedMatchRead(MatchRead):
+    tournament: Optional[TournamentRead] = None
+    team_a: Optional[TeamRead] = None
+    team_b: Optional[TeamRead] = None
 
 @router.post("/", response_model=MatchRead)
 def create_match(*, session: Session = Depends(get_session), match: MatchCreate):
@@ -27,19 +32,31 @@ def create_match(*, session: Session = Depends(get_session), match: MatchCreate)
     session.refresh(db_match)
     return db_match
 
-@router.get("/", response_model=List[MatchRead])
+@router.get("/", response_model=List[EnrichedMatchRead])
 def read_matches(
     *, session: Session = Depends(get_session), offset: int = 0, limit: int = 100
 ):
     matches = session.exec(select(Match).offset(offset).limit(limit)).all()
-    return matches
+    result = []
+    for m in matches:
+        em = EnrichedMatchRead.model_validate(m)
+        em.tournament = session.get(Tournament, m.tournament_id)
+        em.team_a = session.get(Team, m.team_a_id)
+        em.team_b = session.get(Team, m.team_b_id)
+        result.append(em)
+    return result
 
-@router.get("/{match_id}", response_model=MatchRead)
+@router.get("/{match_id}", response_model=EnrichedMatchRead)
 def read_match(*, session: Session = Depends(get_session), match_id: uuid.UUID):
     match = session.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
-    return match
+    
+    em = EnrichedMatchRead.model_validate(match)
+    em.tournament = session.get(Tournament, match.tournament_id)
+    em.team_a = session.get(Team, match.team_a_id)
+    em.team_b = session.get(Team, match.team_b_id)
+    return em
 
 @router.put("/{match_id}", response_model=MatchRead)
 def update_match(

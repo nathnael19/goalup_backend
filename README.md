@@ -99,5 +99,6 @@ The API follows standard RESTful principles. Key endpoints include:
 - `/api/v1/players/`
 - `/api/v1/matches/`
 - `/api/v1/standings/`
+- `/api/v1/tournaments/{id}/schedule`: Automatically generate a match schedule.
 
 Detailed documentation and interactive testing are available via Swagger UI (`/docs`).
