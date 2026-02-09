@@ -44,9 +44,28 @@ def read_team(*, session: Session = Depends(get_session), team_id: uuid.UUID):
     # Sort by start_time descending
     all_matches.sort(key=lambda x: x.start_time, reverse=True)
     
+    # Categorize players into roster
+    roster_data = {
+        "goalkeepers": [],
+        "defenders": [],
+        "midfielders": [],
+        "forwards": []
+    }
+    
+    for p in team.players:
+        pos = p.position.lower()
+        if pos == "gk":
+            roster_data["goalkeepers"].append(p)
+        elif pos in ["cb", "rb", "lb"]:
+            roster_data["defenders"].append(p)
+        elif pos in ["cdm", "cam", "cm"]:
+            roster_data["midfielders"].append(p)
+        elif pos in ["st", "lw", "rw"]:
+            roster_data["forwards"].append(p)
+    
     # Create the detailed response
     response_data = team.model_dump()
-    response_data["players"] = team.players
+    response_data["roster"] = roster_data
     response_data["standings"] = team.standings
     response_data["matches"] = all_matches
     

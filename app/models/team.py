@@ -38,8 +38,14 @@ from app.models.match import MatchRead
 class TeamReadWithTournaments(TeamRead):
     tournaments: List[Tournament] = []
 
+class TeamRoster(SQLModel):
+    goalkeepers: List[PlayerRead] = []
+    defenders: List[PlayerRead] = []
+    midfielders: List[PlayerRead] = []
+    forwards: List[PlayerRead] = []
+
 class TeamReadDetail(TeamRead):
-    players: List[PlayerRead] = []
+    roster: TeamRoster = Field(default_factory=TeamRoster)
     standings: List[StandingRead] = []
     matches: List[MatchRead] = []
 
