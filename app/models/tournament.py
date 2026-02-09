@@ -2,6 +2,8 @@ import uuid
 from typing import Optional, List
 from sqlmodel import Field, SQLModel, Relationship
 
+from app.models.standing import Standing
+
 class TournamentBase(SQLModel):
     name: str
     year: int
@@ -12,6 +14,7 @@ class Tournament(TournamentBase, table=True):
 
     matches: List["Match"] = Relationship(back_populates="tournament")
     standings: List["Standing"] = Relationship(back_populates="tournament")
+    teams: List["Team"] = Relationship(back_populates="tournaments", link_model=Standing)
 
 class TournamentCreate(TournamentBase):
     pass
@@ -23,5 +26,10 @@ class TournamentUpdate(SQLModel):
 
 class TournamentRead(TournamentBase):
     id: uuid.UUID
+
+from app.models.team import Team
+
+class TournamentReadWithTeams(TournamentRead):
+    teams: List[Team] = []
 
 

@@ -3,7 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.database import get_session
-from app.models.tournament import Tournament, TournamentCreate, TournamentRead, TournamentUpdate
+from app.models.tournament import Tournament, TournamentCreate, TournamentRead, TournamentUpdate, TournamentReadWithTeams
 
 router = APIRouter()
 
@@ -20,7 +20,7 @@ def read_tournaments(session: Session = Depends(get_session)):
     tournaments = session.exec(select(Tournament)).all()
     return tournaments
 
-@router.get("/{tournament_id}", response_model=TournamentRead)
+@router.get("/{tournament_id}", response_model=TournamentReadWithTeams)
 def read_tournament(*, session: Session = Depends(get_session), tournament_id: uuid.UUID):
     tournament = session.get(Tournament, tournament_id)
     if not tournament:
