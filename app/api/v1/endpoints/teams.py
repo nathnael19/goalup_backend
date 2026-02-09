@@ -33,6 +33,13 @@ def read_teams(session: Session = Depends(get_session)):
     teams = session.exec(select(Team)).all()
     return teams
 
+@router.get("/{team_id}", response_model=TeamRead)
+def read_team(*, session: Session = Depends(get_session), team_id: uuid.UUID):
+    team = session.get(Team, team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    return team
+
 @router.put("/{team_id}", response_model=TeamRead)
 def update_team(
     *, session: Session = Depends(get_session), team_id: uuid.UUID, team: TeamUpdate
@@ -47,3 +54,14 @@ def update_team(
     session.commit()
     session.refresh(db_team)
     return db_team
+
+@router.delete("/{team_id}")
+def delete_team(
+    *, session: Session = Depends(get_session), team_id: uuid.UUID
+):
+    db_team = session.get(Team, team_id)
+    if not db_team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    session.delete(db_team)
+    session.commit()
+    return {"ok": True}
