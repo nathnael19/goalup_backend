@@ -18,8 +18,11 @@ class GroupedTournamentStandings(SQLModel):
     teams: List[TeamStandingRead]
 
 @router.get("/", response_model=List[GroupedTournamentStandings])
-def read_standings(session: Session = Depends(get_session)):
-    tournaments = session.exec(select(Tournament)).all()
+def read_standings(year: Optional[int] = None, session: Session = Depends(get_session)):
+    query = select(Tournament)
+    if year:
+        query = query.where(Tournament.year == year)
+    tournaments = session.exec(query).all()
     result = []
     
     for t in tournaments:
