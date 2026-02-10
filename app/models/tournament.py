@@ -10,10 +10,12 @@ class TournamentBase(SQLModel):
     year: int
     type: str
     image_url: Optional[str] = None
+    competition_id: Optional[uuid.UUID] = Field(default=None, foreign_key="competition.id")
 
 class Tournament(TournamentBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
 
+    competition: Optional["Competition"] = Relationship(back_populates="tournaments")
     matches: List["Match"] = Relationship(back_populates="tournament", cascade_delete=True)
     standings: List["Standing"] = Relationship(back_populates="tournament", cascade_delete=True)
     teams: List["Team"] = Relationship(back_populates="tournaments", link_model=Standing, sa_relationship_kwargs={"overlaps": "standings,tournament,team"})

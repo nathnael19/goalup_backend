@@ -5,7 +5,7 @@ from pydantic import field_validator
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel, Relationship
 
-class Position(str, Enum):
+class PlayerPosition(str, Enum):
     cb = "cb"
     cdm = "cdm"
     cam = "cam"
@@ -21,7 +21,7 @@ class PlayerBase(SQLModel):
     name: str
     team_id: uuid.UUID = Field(foreign_key="team.id")
     jersey_number: int
-    position: Position
+    position: PlayerPosition = Field(sa_column_kwargs={"name": "player_position_enum"})
     goals: int = Field(default=0)
     yellow_cards: int = Field(default=0)
     red_cards: int = Field(default=0)
@@ -33,7 +33,7 @@ class PlayerBase(SQLModel):
         if isinstance(v, str):
             v = v.lower()
             return v
-        if isinstance(v, Position):
+        if isinstance(v, PlayerPosition):
             return v.value.lower()
         return v
 
@@ -57,7 +57,7 @@ class PlayerUpdate(SQLModel):
     name: Optional[str] = None
     team_id: Optional[uuid.UUID] = None
     jersey_number: Optional[int] = None
-    position: Optional[Position] = None
+    position: Optional[PlayerPosition] = None
     goals: Optional[int] = None
     yellow_cards: Optional[int] = None
     red_cards: Optional[int] = None
@@ -69,7 +69,7 @@ class PlayerUpdate(SQLModel):
         if isinstance(v, str):
             v = v.lower()
             return v
-        if isinstance(v, Position):
+        if isinstance(v, PlayerPosition):
             return v.value.lower()
         return v
 

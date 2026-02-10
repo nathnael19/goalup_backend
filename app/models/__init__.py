@@ -4,3 +4,4 @@ from .player import Player
 from .match import Match
 from .standing import Standing
 from .user import User
+from .competition import Competition
