@@ -9,6 +9,7 @@ class TournamentBase(SQLModel):
     name: str
     year: int
     type: str
+    image_url: Optional[str] = None
 
 class Tournament(TournamentBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -29,6 +30,7 @@ class TournamentUpdate(SQLModel):
     name: Optional[str] = None
     year: Optional[int] = None
     type: Optional[str] = None
+    image_url: Optional[str] = None
 
 class TournamentRead(TournamentBase):
     id: uuid.UUID

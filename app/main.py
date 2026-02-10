@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
@@ -20,6 +21,9 @@ def on_startup():
     create_db_and_tables()
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# Static Files
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/health")
 def health_check():

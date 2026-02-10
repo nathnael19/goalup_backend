@@ -25,6 +25,7 @@ class PlayerBase(SQLModel):
     goals: int = Field(default=0)
     yellow_cards: int = Field(default=0)
     red_cards: int = Field(default=0)
+    image_url: Optional[str] = None
 
     @field_validator("position", mode="before")
     @classmethod
@@ -58,6 +59,7 @@ class PlayerUpdate(SQLModel):
     goals: Optional[int] = None
     yellow_cards: Optional[int] = None
     red_cards: Optional[int] = None
+    image_url: Optional[str] = None
 
     @field_validator("position", mode="before")
     @classmethod
