@@ -45,6 +45,7 @@ class Player(PlayerBase, table=True):
 
     team: "Team" = Relationship(back_populates="players")
     scored_goals: List["Goal"] = Relationship(back_populates="player")
+    cards_received: List["Card"] = Relationship(back_populates="player")
 
 class PlayerCreate(PlayerBase):
     pass
@@ -72,5 +73,6 @@ class PlayerUpdate(SQLModel):
             return v.value.lower()
         return v
 
+from app.models.card import Card
 from app.models.goal import Goal
 from app.models.team import Team

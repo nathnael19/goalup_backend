@@ -29,6 +29,7 @@ class Match(MatchBase, table=True):
     team_a: "Team" = Relationship(back_populates="home_matches", sa_relationship_kwargs={"foreign_keys": "Match.team_a_id"})
     team_b: "Team" = Relationship(back_populates="away_matches", sa_relationship_kwargs={"foreign_keys": "Match.team_b_id"})
     goals_list: List["Goal"] = Relationship(back_populates="match", cascade_delete=True)
+    cards_list: List["Card"] = Relationship(back_populates="match", cascade_delete=True)
 
 class MatchCreate(MatchBase):
     pass
@@ -49,6 +50,7 @@ class MatchUpdate(SQLModel):
     total_time: Optional[int] = None
     is_halftime: Optional[bool] = None
 
+from app.models.card import Card
 from app.models.goal import Goal
 from app.models.tournament import Tournament
 from app.models.team import Team
