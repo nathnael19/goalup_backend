@@ -25,6 +25,7 @@ class TournamentScheduleCreate(SQLModel):
     start_date: datetime
     interval_days: int = Field(default=1)
     matches_per_day: int = Field(default=1)
+    total_time: int = Field(default=90)
 
 class TournamentUpdate(SQLModel):
     name: Optional[str] = None
