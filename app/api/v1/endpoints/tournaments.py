@@ -63,6 +63,17 @@ def schedule_tournament(
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
     
+    # Check if fixtures already exist for this tournament
+    existing_matches = session.exec(
+        select(Match).where(Match.tournament_id == tournament_id)
+    ).first()
+    
+    if existing_matches:
+        raise HTTPException(
+            status_code=400, 
+            detail="Fixtures already exist for this tournament. Please delete existing matches before regenerating."
+        )
+    
     teams = tournament.teams
     if len(teams) < 2:
         raise HTTPException(status_code=400, detail="At least 2 teams are required to schedule a tournament")
