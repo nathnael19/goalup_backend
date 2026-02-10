@@ -16,7 +16,9 @@ def create_team(*, session: Session = Depends(get_session), team: TeamCreate):
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
 
-    db_team = Team.model_validate(team)
+    # Create team without tournament_id (it's in the payload but not the model)
+    team_data = team.model_dump(exclude={"tournament_id"})
+    db_team = Team.model_validate(team_data)
     session.add(db_team)
     session.commit()
     session.refresh(db_team)

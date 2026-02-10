@@ -6,7 +6,6 @@ from app.models.standing import Standing
 
 class TeamBase(SQLModel):
     name: str = Field(index=True)
-    batch: str
     logo_url: Optional[str] = None
     color: Optional[str] = None
 
@@ -24,7 +23,6 @@ class TeamCreate(TeamBase):
 
 class TeamUpdate(SQLModel):
     name: Optional[str] = None
-    batch: Optional[str] = None
     logo_url: Optional[str] = None
     tournament_id: Optional[uuid.UUID] = None
 
