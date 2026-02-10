@@ -17,6 +17,8 @@ class MatchBase(SQLModel):
     score_b: int = Field(default=0)
     status: MatchStatus = Field(default=MatchStatus.scheduled)
     start_time: datetime
+    additional_time_first_half: int = Field(default=0)
+    additional_time_second_half: int = Field(default=0)
 
 class Match(MatchBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -39,3 +41,5 @@ class MatchUpdate(SQLModel):
     score_b: Optional[int] = None
     status: Optional[MatchStatus] = None
     start_time: Optional[datetime] = None
+    additional_time_first_half: Optional[int] = None
+    additional_time_second_half: Optional[int] = None
