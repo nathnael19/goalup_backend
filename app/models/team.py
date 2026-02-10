@@ -11,6 +11,7 @@ class TeamBase(SQLModel):
 
 class Team(TeamBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    tournament_id: uuid.UUID = Field(foreign_key="tournament.id", nullable=False)
 
     players: List["Player"] = Relationship(back_populates="team", cascade_delete=True)
     home_matches: List["Match"] = Relationship(back_populates="team_a", sa_relationship_kwargs={"foreign_keys": "Match.team_a_id"})

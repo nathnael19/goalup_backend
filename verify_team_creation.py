@@ -21,9 +21,9 @@ def get_tournaments():
 def create_team(tournament_id):
     url = f"{BASE_URL}/teams/"
     data = {
-        "name": "Verification Team",
+        "name": "DB Vercel Team",
         "tournament_id": tournament_id,
-        "color": "#FF0000"
+        "color": "#00FF00"
     }
     
     req = urllib.request.Request(
@@ -37,11 +37,17 @@ def create_team(tournament_id):
         with urllib.request.urlopen(req) as response:
             if response.status == 200:
                 print("Team created successfully!")
-                print(response.read().decode())
-                return True
+                team_data = json.loads(response.read().decode())
+                print(f"Created Team: {team_data['name']}")
+                print(f"Assigned Tournament ID: {team_data.get('tournament_id')}")
+                if team_data.get('tournament_id') == tournament_id:
+                    print("SUCCESS: Tournament ID persisted correctly.")
+                    return True
+                else:
+                    print("FAILURE: Tournament ID mismatch.")
+                    return False
             else:
                 print(f"Failed to create team: {response.status}")
-                print(response.read().decode())
                 return False
     except urllib.error.HTTPError as e:
         print(f"HTTP Error creating team: {e.code}")
