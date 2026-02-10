@@ -28,6 +28,9 @@ class CardCreate(CardBase):
 class CardRead(CardBase):
     id: uuid.UUID
 
+class CardReadWithPlayer(CardRead):
+    player: Optional["PlayerRead"] = None
+
 from app.models.match import Match
-from app.models.player import Player
+from app.models.player import Player, PlayerRead
 from app.models.team import Team

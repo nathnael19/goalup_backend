@@ -3,14 +3,14 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.database import get_session
-from app.models.card import Card, CardCreate, CardRead
+from app.models.card import Card, CardCreate, CardRead, CardReadWithPlayer
 from app.models.match import Match
 from app.models.player import Player
 from app.models.team import Team
 
 router = APIRouter()
 
-@router.post("/", response_model=CardRead)
+@router.post("/", response_model=CardReadWithPlayer)
 def create_card(*, session: Session = Depends(get_session), card: CardCreate):
     # Verify match exists
     match = session.get(Match, card.match_id)
@@ -47,7 +47,7 @@ def create_card(*, session: Session = Depends(get_session), card: CardCreate):
     session.refresh(db_card)
     return db_card
 
-@router.get("/match/{match_id}", response_model=List[CardRead])
+@router.get("/match/{match_id}", response_model=List[CardReadWithPlayer])
 def read_match_cards(*, session: Session = Depends(get_session), match_id: uuid.UUID):
     cards = session.exec(select(Card).where(Card.match_id == match_id).order_by(Card.minute)).all()
     return cards

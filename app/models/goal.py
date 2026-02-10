@@ -22,6 +22,9 @@ class GoalCreate(GoalBase):
 class GoalRead(GoalBase):
     id: uuid.UUID
 
+class GoalReadWithPlayer(GoalRead):
+    player: Optional["PlayerRead"] = None
+
 from app.models.match import Match
-from app.models.player import Player
+from app.models.player import Player, PlayerRead
 from app.models.team import Team

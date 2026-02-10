@@ -3,14 +3,14 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.database import get_session
-from app.models.goal import Goal, GoalCreate, GoalRead
+from app.models.goal import Goal, GoalCreate, GoalRead, GoalReadWithPlayer
 from app.models.match import Match
 from app.models.player import Player
 from app.models.team import Team
 
 router = APIRouter()
 
-@router.post("/", response_model=GoalRead)
+@router.post("/", response_model=GoalReadWithPlayer)
 def create_goal(*, session: Session = Depends(get_session), goal: GoalCreate):
     # Verify match and teams exist
     match = session.get(Match, goal.match_id)
@@ -60,7 +60,7 @@ def create_goal(*, session: Session = Depends(get_session), goal: GoalCreate):
     session.refresh(db_goal)
     return db_goal
 
-@router.get("/match/{match_id}", response_model=List[GoalRead])
+@router.get("/match/{match_id}", response_model=List[GoalReadWithPlayer])
 def read_match_goals(*, session: Session = Depends(get_session), match_id: uuid.UUID):
     goals = session.exec(select(Goal).where(Goal.match_id == match_id).order_by(Goal.minute)).all()
     return goals
