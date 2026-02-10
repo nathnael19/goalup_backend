@@ -26,9 +26,11 @@ class TeamUpdate(SQLModel):
     name: Optional[str] = None
     batch: Optional[str] = None
     logo_url: Optional[str] = None
+    tournament_id: Optional[uuid.UUID] = None
 
 class TeamRead(TeamBase):
     id: uuid.UUID
+    tournament_id: Optional[uuid.UUID] = None
 
 from app.models.tournament import Tournament
 from app.models.player import PlayerRead
