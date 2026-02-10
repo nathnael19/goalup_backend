@@ -1,6 +1,6 @@
 from enum import Enum
 import uuid
-from typing import Optional
+from typing import Optional, List
 from pydantic import field_validator
 from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel, Relationship
@@ -44,6 +44,7 @@ class Player(PlayerBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
 
     team: "Team" = Relationship(back_populates="players")
+    scored_goals: List["Goal"] = Relationship(back_populates="player")
 
 class PlayerCreate(PlayerBase):
     pass
@@ -70,3 +71,6 @@ class PlayerUpdate(SQLModel):
         if isinstance(v, Position):
             return v.value.lower()
         return v
+
+from app.models.goal import Goal
+from app.models.team import Team
