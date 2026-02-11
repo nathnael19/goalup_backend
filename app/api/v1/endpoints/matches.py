@@ -6,6 +6,7 @@ from app.core.database import get_session
 from app.models.match import Match, MatchCreate, MatchRead, MatchUpdate
 from app.models.team import Team, TeamRead
 from app.models.tournament import Tournament, TournamentRead
+from app.models.lineup import Lineup, LineupRead
 
 router = APIRouter()
 
@@ -13,6 +14,7 @@ class EnrichedMatchRead(MatchRead):
     tournament: Optional[TournamentRead] = None
     team_a: Optional[TeamRead] = None
     team_b: Optional[TeamRead] = None
+    lineups: List[LineupRead] = []
 
 @router.post("/", response_model=MatchRead)
 def create_match(*, session: Session = Depends(get_session), match: MatchCreate):
@@ -43,6 +45,7 @@ def read_matches(
         em.tournament = session.get(Tournament, m.tournament_id)
         em.team_a = session.get(Team, m.team_a_id)
         em.team_b = session.get(Team, m.team_b_id)
+        em.lineups = session.exec(select(Lineup).where(Lineup.match_id == m.id)).all()
         result.append(em)
     return result
 
@@ -56,6 +59,7 @@ def read_match(*, session: Session = Depends(get_session), match_id: uuid.UUID):
     em.tournament = session.get(Tournament, match.tournament_id)
     em.team_a = session.get(Team, match.team_a_id)
     em.team_b = session.get(Team, match.team_b_id)
+    em.lineups = session.exec(select(Lineup).where(Lineup.match_id == match_id)).all()
     return em
 
 @router.put("/{match_id}", response_model=MatchRead)
@@ -83,6 +87,31 @@ def update_match(
         import datetime
         match_data["finished_at"] = datetime.datetime.now()
 
+    # Validate lineup before starting match
+    if match_data.get("status") == "live" and db_match.status != "live":
+        # Check team A
+        team_a_lineup = session.exec(
+            select(Lineup).where(
+                Lineup.match_id == match_id,
+                Lineup.team_id == db_match.team_a_id,
+                Lineup.is_starting == True
+            )
+        ).all()
+        # Check team B
+        team_b_lineup = session.exec(
+            select(Lineup).where(
+                Lineup.match_id == match_id,
+                Lineup.team_id == db_match.team_b_id,
+                Lineup.is_starting == True
+            )
+        ).all()
+        
+        if len(team_a_lineup) < 11 or len(team_b_lineup) < 11:
+            raise HTTPException(
+                status_code=400,
+                detail="Starting XI must have at least 11 players for both teams before starting the match"
+            )
+
     for key, value in match_data.items():
         setattr(db_match, key, value)
         
@@ -99,3 +128,37 @@ def delete_match(*, session: Session = Depends(get_session), match_id: uuid.UUID
     session.delete(match)
     session.commit()
     return {"ok": True}
+
+@router.post("/{match_id}/lineups", response_model=List[LineupRead])
+def set_lineups(
+    *, 
+    session: Session = Depends(get_session), 
+    match_id: uuid.UUID, 
+    lineups: List[Lineup]
+):
+    db_match = session.get(Match, match_id)
+    if not db_match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    
+    # Check lock
+    if db_match.status == "finished" and db_match.finished_at:
+        import datetime
+        lock_time = db_match.finished_at + datetime.timedelta(hours=1)
+        if datetime.datetime.now() > lock_time:
+            raise HTTPException(
+                status_code=403, 
+                detail="Match data is locked and cannot be changed after 1 hour of completion"
+            )
+
+    # Delete existing lineups for this match
+    existing_lineups = session.exec(select(Lineup).where(Lineup.match_id == match_id)).all()
+    for l in existing_lineups:
+        session.delete(l)
+    
+    # Add new lineups
+    for l in lineups:
+        l.match_id = match_id
+        session.add(l)
+        
+    session.commit()
+    return session.exec(select(Lineup).where(Lineup.match_id == match_id)).all()
