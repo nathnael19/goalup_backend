@@ -150,7 +150,8 @@ def schedule_tournament(
                 team_b_id=t2,
                 start_time=current_time,
                 status=MatchStatus.scheduled,
-                total_time=schedule.total_time
+                total_time=schedule.total_time,
+                match_day=round_idx + 1
             )
             session.add(db_match)
             created_matches.append(db_match)

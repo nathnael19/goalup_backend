@@ -24,6 +24,7 @@ class MatchBase(SQLModel):
     first_half_start: Optional[datetime] = None
     second_half_start: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    match_day: int = Field(default=1, index=True)
 
 class Match(MatchBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -57,6 +58,7 @@ class MatchUpdate(SQLModel):
     first_half_start: Optional[datetime] = None
     second_half_start: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    match_day: Optional[int] = None
 
 from app.models.card import Card
 from app.models.goal import Goal

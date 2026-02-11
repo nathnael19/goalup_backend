@@ -34,12 +34,19 @@ def read_news(
     *,
     session: Session = Depends(get_session),
     category: Optional[NewsCategory] = Query(None),
+    team_id: Optional[uuid.UUID] = Query(None),
+    player_id: Optional[uuid.UUID] = Query(None),
     offset: int = 0,
     limit: int = 100,
 ):
     query = select(News).order_by(News.created_at.desc())
     if category:
         query = query.where(News.category == category)
+    if team_id:
+        query = query.where(News.team_id == team_id)
+    if player_id:
+        query = query.where(News.player_id == player_id)
+        
     query = query.offset(offset).limit(limit)
     news_list = session.exec(query).all()
     return news_list
