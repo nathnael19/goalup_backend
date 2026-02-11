@@ -21,6 +21,9 @@ class MatchBase(SQLModel):
     additional_time_second_half: int = Field(default=0)
     total_time: int = Field(default=90)
     is_halftime: bool = Field(default=False)
+    first_half_start: Optional[datetime] = None
+    second_half_start: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
 
 class Match(MatchBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -50,6 +53,9 @@ class MatchUpdate(SQLModel):
     additional_time_second_half: Optional[int] = None
     total_time: Optional[int] = None
     is_halftime: Optional[bool] = None
+    first_half_start: Optional[datetime] = None
+    second_half_start: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
 
 from app.models.card import Card
 from app.models.goal import Goal

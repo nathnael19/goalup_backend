@@ -66,7 +66,23 @@ def update_match(
     if not db_match:
         raise HTTPException(status_code=404, detail="Match not found")
     
+    # Lock match data if finished for > 1 hour
+    if db_match.status == "finished" and db_match.finished_at:
+        import datetime
+        lock_time = db_match.finished_at + datetime.timedelta(hours=1)
+        if datetime.datetime.now() > lock_time:
+            raise HTTPException(
+                status_code=403, 
+                detail="Match data is locked and cannot be changed after 1 hour of completion"
+            )
+
     match_data = match.model_dump(exclude_unset=True)
+    
+    # Auto-set finished_at when status becomes finished
+    if match_data.get("status") == "finished" and db_match.status != "finished":
+        import datetime
+        match_data["finished_at"] = datetime.datetime.now()
+
     for key, value in match_data.items():
         setattr(db_match, key, value)
         

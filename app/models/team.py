@@ -8,6 +8,7 @@ class TeamBase(SQLModel):
     name: str = Field(index=True)
     logo_url: Optional[str] = None
     color: Optional[str] = None
+    stadium: Optional[str] = None
 
 class Team(TeamBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -27,6 +28,7 @@ class TeamUpdate(SQLModel):
     name: Optional[str] = None
     logo_url: Optional[str] = None
     tournament_id: Optional[uuid.UUID] = None
+    stadium: Optional[str] = None
 
 class TeamRead(TeamBase):
     id: uuid.UUID
