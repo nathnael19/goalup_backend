@@ -30,6 +30,7 @@ class Match(MatchBase, table=True):
     team_b: "Team" = Relationship(back_populates="away_matches", sa_relationship_kwargs={"foreign_keys": "Match.team_b_id"})
     goals_list: List["Goal"] = Relationship(back_populates="match", cascade_delete=True)
     cards_list: List["Card"] = Relationship(back_populates="match", cascade_delete=True)
+    substitutions: List["Substitution"] = Relationship(back_populates="match", cascade_delete=True)
 
 class MatchCreate(MatchBase):
     pass
@@ -54,3 +55,4 @@ from app.models.card import Card
 from app.models.goal import Goal
 from app.models.tournament import Tournament
 from app.models.team import Team
+from app.models.substitution import Substitution

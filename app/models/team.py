@@ -18,6 +18,7 @@ class Team(TeamBase, table=True):
     away_matches: List["Match"] = Relationship(back_populates="team_b", sa_relationship_kwargs={"foreign_keys": "Match.team_b_id"})
     standings: List["Standing"] = Relationship(back_populates="team", cascade_delete=True, sa_relationship_kwargs={"overlaps": "teams"})
     tournaments: List["Tournament"] = Relationship(back_populates="teams", link_model=Standing, sa_relationship_kwargs={"overlaps": "standings,team,tournament"})
+    substitutions: List["Substitution"] = Relationship(back_populates="team")
 
 class TeamCreate(TeamBase):
     tournament_id: uuid.UUID
@@ -35,6 +36,7 @@ from app.models.tournament import Tournament
 from app.models.player import PlayerRead
 from app.models.standing import StandingRead
 from app.models.match import MatchRead
+from app.models.substitution import Substitution
 
 class TeamReadWithTournaments(TeamRead):
     tournaments: List[Tournament] = []
