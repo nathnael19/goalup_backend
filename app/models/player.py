@@ -44,7 +44,14 @@ class Player(PlayerBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
 
     team: "Team" = Relationship(back_populates="players")
-    scored_goals: List["Goal"] = Relationship(back_populates="player")
+    scored_goals: List["Goal"] = Relationship(
+        back_populates="player",
+        sa_relationship_kwargs={"primaryjoin": "Player.id == Goal.player_id"}
+    )
+    assisted_goals: List["Goal"] = Relationship(
+        back_populates="assistant",
+        sa_relationship_kwargs={"primaryjoin": "Player.id == Goal.assistant_id"}
+    )
     cards_received: List["Card"] = Relationship(back_populates="player")
 
 class PlayerCreate(PlayerBase):
