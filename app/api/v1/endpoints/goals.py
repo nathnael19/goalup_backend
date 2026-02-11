@@ -7,6 +7,7 @@ from app.models.goal import Goal, GoalCreate, GoalRead, GoalReadWithPlayer
 from app.models.match import Match
 from app.models.player import Player
 from app.models.team import Team
+from app.core.audit import record_audit_log
 
 router = APIRouter()
 
@@ -56,6 +57,16 @@ def create_goal(*, session: Session = Depends(get_session), goal: GoalCreate):
              match.score_b += 1
     
     session.add(match)
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="ADD_GOAL",
+        entity_type="Match",
+        entity_id=str(goal.match_id),
+        description=f"Recorded goal in match {goal.match_id}. Scorer: {goal.player_id}"
+    )
+
     session.commit()
     session.refresh(db_goal)
     return db_goal
@@ -80,6 +91,15 @@ def delete_goal(*, session: Session = Depends(get_session), goal_id: uuid.UUID):
             match.score_b = max(0, match.score_b - 1)
         session.add(match)
         
+    # Audit Log
+    record_audit_log(
+        session,
+        action="DELETE_GOAL",
+        entity_type="Match",
+        entity_id=str(db_goal.match_id),
+        description=f"Deleted goal {goal_id} from match {db_goal.match_id}"
+    )
+
     session.delete(db_goal)
     session.commit()
     return {"ok": True}

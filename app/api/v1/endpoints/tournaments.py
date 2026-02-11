@@ -6,6 +6,7 @@ from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.tournament import Tournament, TournamentCreate, TournamentRead, TournamentUpdate, TournamentReadWithTeams, TournamentScheduleCreate
 from app.models.match import Match, MatchStatus
+from app.core.audit import record_audit_log
 
 router = APIRouter()
 
@@ -51,6 +52,15 @@ def delete_tournament(
     db_tournament = session.get(Tournament, tournament_id)
     if not db_tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
+    # Audit Log
+    record_audit_log(
+        session,
+        action="DELETE",
+        entity_type="Tournament",
+        entity_id=str(tournament_id),
+        description=f"Deleted tournament: {db_tournament.name}"
+    )
+
     session.delete(db_tournament)
     session.commit()
     return {"ok": True}
@@ -156,5 +166,14 @@ def schedule_tournament(
         # For now, simplistic approach respecting matches_per_day is safer for general use.
         # If user wants 1 round per week: matches_per_day = teams/2, interval = 7.
                 
+    # Audit Log
+    record_audit_log(
+        session,
+        action="SCHEDULE_GENERATED",
+        entity_type="Tournament",
+        entity_id=str(tournament_id),
+        description=f"Generated {len(created_matches)} fixtures for tournament {tournament_id}"
+    )
+
     session.commit()
     return {"ok": True, "matches_created": len(created_matches)}

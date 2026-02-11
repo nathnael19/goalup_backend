@@ -7,6 +7,7 @@ from app.models.substitution import Substitution, SubstitutionCreate, Substituti
 from app.models.match import Match
 from app.models.team import Team
 from app.models.player import Player
+from app.core.audit import record_audit_log
 
 router = APIRouter()
 
@@ -30,6 +31,16 @@ def create_substitution(*, session: Session = Depends(get_session), substitution
         
     db_substitution = Substitution.model_validate(substitution)
     session.add(db_substitution)
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="ADD_SUBSTITUTION",
+        entity_type="Match",
+        entity_id=str(substitution.match_id),
+        description=f"Recorded substitution in match {substitution.match_id}: {player_out.name} OUT, {player_in.name} IN"
+    )
+
     session.commit()
     session.refresh(db_substitution)
     return db_substitution
@@ -46,6 +57,15 @@ def delete_substitution(*, session: Session = Depends(get_session), substitution
     substitution = session.get(Substitution, substitution_id)
     if not substitution:
         raise HTTPException(status_code=404, detail="Substitution not found")
+    # Audit Log
+    record_audit_log(
+        session,
+        action="DELETE_SUBSTITUTION",
+        entity_type="Match",
+        entity_id=str(substitution.match_id),
+        description=f"Deleted substitution {substitution_id} from match {substitution.match_id}"
+    )
+
     session.delete(substitution)
     session.commit()
     return {"ok": True}

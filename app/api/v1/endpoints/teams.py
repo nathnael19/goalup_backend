@@ -6,6 +6,7 @@ from app.core.database import get_session
 from app.models.team import Team, TeamCreate, TeamRead, TeamUpdate, TeamReadWithTournaments, TeamReadDetail
 from app.models.standing import Standing
 from app.models.tournament import Tournament
+from app.core.audit import record_audit_log
 
 router = APIRouter()
 
@@ -19,6 +20,16 @@ def create_team(*, session: Session = Depends(get_session), team: TeamCreate):
     # Tournament ID is now part of the model, so we can validate directly
     db_team = Team.model_validate(team)
     session.add(db_team)
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="CREATE",
+        entity_type="Team",
+        entity_id=str(db_team.id),
+        description=f"Created team: {db_team.name}"
+    )
+
     session.commit()
     session.refresh(db_team)
 
@@ -109,6 +120,16 @@ def update_team(
         setattr(db_team, key, value)
         
     session.add(db_team)
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="UPDATE",
+        entity_type="Team",
+        entity_id=str(db_team.id),
+        description=f"Updated team info: {db_team.name}"
+    )
+
     session.commit()
     session.refresh(db_team)
     
@@ -121,6 +142,15 @@ def delete_team(
     db_team = session.get(Team, team_id)
     if not db_team:
         raise HTTPException(status_code=404, detail="Team not found")
+    # Audit Log
+    record_audit_log(
+        session,
+        action="DELETE",
+        entity_type="Team",
+        entity_id=str(team_id),
+        description=f"Deleted team: {db_team.name}"
+    )
+
     session.delete(db_team)
     session.commit()
     return {"ok": True}

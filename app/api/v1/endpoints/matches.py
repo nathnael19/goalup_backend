@@ -7,6 +7,7 @@ from app.models.match import Match, MatchCreate, MatchRead, MatchUpdate
 from app.models.team import Team, TeamRead
 from app.models.tournament import Tournament, TournamentRead
 from app.models.lineup import Lineup, LineupRead
+from app.core.audit import record_audit_log
 
 router = APIRouter()
 
@@ -30,6 +31,16 @@ def create_match(*, session: Session = Depends(get_session), match: MatchCreate)
         
     db_match = Match.model_validate(match)
     session.add(db_match)
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="CREATE",
+        entity_type="Match",
+        entity_id=str(db_match.id),
+        description=f"Created match: {team_a.name} vs {team_b.name}"
+    )
+    
     session.commit()
     session.refresh(db_match)
     return db_match
@@ -116,6 +127,16 @@ def update_match(
         setattr(db_match, key, value)
         
     session.add(db_match)
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="UPDATE",
+        entity_type="Match",
+        entity_id=str(db_match.id),
+        description=f"Updated match info (Status: {db_match.status})"
+    )
+    
     session.commit()
     session.refresh(db_match)
     return db_match
@@ -125,6 +146,16 @@ def delete_match(*, session: Session = Depends(get_session), match_id: uuid.UUID
     match = session.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="DELETE",
+        entity_type="Match",
+        entity_id=str(match_id),
+        description=f"Deleted match: {match.id}"
+    )
+
     session.delete(match)
     session.commit()
     return {"ok": True}
@@ -160,5 +191,14 @@ def set_lineups(
         l.match_id = match_id
         session.add(l)
         
+    # Audit Log
+    record_audit_log(
+        session,
+        action="LINEUP_SET",
+        entity_type="Match",
+        entity_id=str(match_id),
+        description=f"Set lineups for match: {match_id}"
+    )
+
     session.commit()
     return session.exec(select(Lineup).where(Lineup.match_id == match_id)).all()

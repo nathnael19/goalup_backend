@@ -7,6 +7,7 @@ from app.models.card import Card, CardCreate, CardRead, CardReadWithPlayer
 from app.models.match import Match
 from app.models.player import Player
 from app.models.team import Team
+from app.core.audit import record_audit_log
 
 router = APIRouter()
 
@@ -43,6 +44,15 @@ def create_card(*, session: Session = Depends(get_session), card: CardCreate):
         player.red_cards += 1
     session.add(player)
     
+    # Audit Log
+    record_audit_log(
+        session,
+        action="ADD_CARD",
+        entity_type="Match",
+        entity_id=str(card.match_id),
+        description=f"Recorded {card.type} card for player {card.player_id} in match {card.match_id}"
+    )
+
     session.commit()
     session.refresh(db_card)
     return db_card
@@ -67,6 +77,15 @@ def delete_card(*, session: Session = Depends(get_session), card_id: uuid.UUID):
             player.red_cards = max(0, player.red_cards - 1)
         session.add(player)
         
+    # Audit Log
+    record_audit_log(
+        session,
+        action="DELETE_CARD",
+        entity_type="Match",
+        entity_id=str(db_card.match_id),
+        description=f"Deleted card {card_id} from match {db_card.match_id}"
+    )
+
     session.delete(db_card)
     session.commit()
     return {"ok": True}

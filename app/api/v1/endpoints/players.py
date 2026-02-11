@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.player import Player, PlayerCreate, PlayerRead, PlayerUpdate
 from app.models.team import Team
+from app.core.audit import record_audit_log
 
 router = APIRouter()
 
@@ -31,6 +32,16 @@ def create_player(*, session: Session = Depends(get_session), player: PlayerCrea
         raise HTTPException(status_code=404, detail="Team not found")
     db_player = Player.model_validate(player)
     session.add(db_player)
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="CREATE",
+        entity_type="Player",
+        entity_id=str(db_player.id),
+        description=f"Created player: {db_player.name} (#{db_player.jersey_number})"
+    )
+
     session.commit()
     session.refresh(db_player)
     return db_player
@@ -83,6 +94,16 @@ def update_player(
         setattr(db_player, key, value)
     
     session.add(db_player)
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="UPDATE",
+        entity_type="Player",
+        entity_id=str(db_player.id),
+        description=f"Updated player info: {db_player.name}"
+    )
+
     session.commit()
     session.refresh(db_player)
     return db_player
@@ -92,6 +113,15 @@ def delete_player(*, session: Session = Depends(get_session), player_id: uuid.UU
     db_player = session.get(Player, player_id)
     if not db_player:
         raise HTTPException(status_code=404, detail="Player not found")
+    # Audit Log
+    record_audit_log(
+        session,
+        action="DELETE",
+        entity_type="Player",
+        entity_id=str(player_id),
+        description=f"Deleted player: {db_player.name}"
+    )
+
     session.delete(db_player)
     session.commit()
     return {"ok": True}

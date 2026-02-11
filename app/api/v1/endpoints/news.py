@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 from datetime import datetime
 from app.core.database import get_session
 from app.models.news import News, NewsCreate, NewsRead, NewsUpdate, NewsCategory
+from app.core.audit import record_audit_log
 
 router = APIRouter()
 
@@ -13,6 +14,16 @@ router = APIRouter()
 def create_news(*, session: Session = Depends(get_session), news: NewsCreate):
     db_news = News.model_validate(news)
     session.add(db_news)
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="CREATE",
+        entity_type="News",
+        entity_id=str(db_news.id),
+        description=f"Published news: {db_news.title}"
+    )
+
     session.commit()
     session.refresh(db_news)
     return db_news
@@ -54,6 +65,16 @@ def update_news(
     for key, value in news_data.items():
         setattr(db_news, key, value)
     session.add(db_news)
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="UPDATE",
+        entity_type="News",
+        entity_id=str(db_news.id),
+        description=f"Updated news article: {db_news.title}"
+    )
+
     session.commit()
     session.refresh(db_news)
     return db_news
@@ -64,6 +85,15 @@ def delete_news(*, session: Session = Depends(get_session), news_id: uuid.UUID):
     news = session.get(News, news_id)
     if not news:
         raise HTTPException(status_code=404, detail="News article not found")
+    # Audit Log
+    record_audit_log(
+        session,
+        action="DELETE",
+        entity_type="News",
+        entity_id=str(news_id),
+        description=f"Deleted news article: {news.title}"
+    )
+
     session.delete(news)
     session.commit()
     return {"ok": True}
