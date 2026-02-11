@@ -4,7 +4,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.database import get_session
-from app.models.tournament import Tournament, TournamentCreate, TournamentRead, TournamentUpdate, TournamentReadWithTeams, TournamentScheduleCreate
+from app.models.tournament import Tournament, TournamentCreate, TournamentRead, TournamentUpdate, TournamentReadWithTeams, TournamentScheduleCreate, TournamentKnockoutCreate
 from app.models.match import Match, MatchStatus
 from app.core.audit import record_audit_log
 
@@ -178,3 +178,108 @@ def schedule_tournament(
 
     session.commit()
     return {"ok": True, "matches_created": len(created_matches)}
+@router.post("/{tournament_id}/generate-knockout")
+def generate_knockout_fixtures(
+    *, session: Session = Depends(get_session), tournament_id: uuid.UUID, schedule: TournamentKnockoutCreate
+):
+    tournament = session.get(Tournament, tournament_id)
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    
+    # Check if fixtures already exist
+    existing_matches = session.exec(
+        select(Match).where(Match.tournament_id == tournament_id)
+    ).first()
+    
+    if existing_matches:
+        raise HTTPException(
+            status_code=400, 
+            detail="Fixtures already exist. Delete them before regenerating."
+        )
+    
+    teams = tournament.teams
+    if len(teams) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 teams required")
+    
+    import math
+    import random
+    
+    team_ids = [t.id for t in teams]
+    random.shuffle(team_ids)
+    
+    t_count = len(team_ids)
+    # Next power of 2
+    next_pow2 = 2**math.ceil(math.log2(t_count))
+    
+    # Stages mapping
+    stage_names = {
+        2: "Final",
+        4: "Semi-final",
+        8: "Quarter-final",
+        16: "Round of 16",
+        32: "Round of 32",
+        64: "Round of 64"
+    }
+    
+    # For knockout, we only generate the FIRST round that has actual matches.
+    # If t_count is 12, next_pow2 is 16.
+    # We need 4 matches in Round 1 (8 teams) to get 4 winners.
+    # Plus 4 teams with Byes. Total 8 teams in Round 2 (Quarter-finals).
+    
+    num_matches_r1 = t_count - (next_pow2 // 2)
+    # The teams that play in R1
+    teams_playing_r1 = team_ids[:num_matches_r1 * 2]
+    # The teams with Byes
+    teams_with_bye = team_ids[num_matches_r1 * 2:]
+    
+    current_time = schedule.start_date
+    created_matches = []
+    
+    # Determine stage name
+    current_stage_size = next_pow2
+    if num_matches_r1 > 0 and next_pow2 > t_count:
+        # We have a preliminary round or "First Round"
+        stage_name = f"Round of {next_pow2} (Prelim)" if next_pow2 > 8 else "First Round"
+    else:
+        stage_name = stage_names.get(t_count, f"Round of {t_count}")
+
+    # Generate Round 1 Matches
+    for i in range(0, len(teams_playing_r1), 2):
+        t1, t2 = teams_playing_r1[i], teams_playing_r1[i+1]
+        db_match = Match(
+            tournament_id=tournament_id,
+            team_a_id=t1,
+            team_b_id=t2,
+            start_time=current_time,
+            status=MatchStatus.scheduled,
+            total_time=schedule.total_time,
+            match_day=1,
+            stage=stage_name
+        )
+        session.add(db_match)
+        created_matches.append(db_match)
+        
+        # Increment time based on matches_per_day
+        if schedule.matches_per_day > 0 and len(created_matches) % schedule.matches_per_day == 0:
+            current_time += timedelta(days=schedule.interval_days)
+
+    # Note: For now, we only generate the first round. 
+    # Subsequent rounds depend on winners of these matches.
+    # The teams_with_bye would enter in the next stage.
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="KNOCKOUT_GENERATED",
+        entity_type="Tournament",
+        entity_id=str(tournament_id),
+        description=f"Generated {len(created_matches)} knockout fixtures for {stage_name}"
+    )
+
+    session.commit()
+    return {
+        "ok": True, 
+        "matches_created": len(created_matches), 
+        "stage": stage_name,
+        "teams_with_bye_ids": [str(tid) for tid in teams_with_bye]
+    }

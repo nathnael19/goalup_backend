@@ -8,9 +8,11 @@ from app.models.standing import Standing
 class TournamentBase(SQLModel):
     name: str
     year: int
-    type: str
+    type: str = Field(default="league") # "league", "knockout", "group_knockout"
     image_url: Optional[str] = None
     competition_id: Optional[uuid.UUID] = Field(default=None, foreign_key="competition.id")
+    knockout_legs: int = Field(default=1) # 1 or 2
+    has_third_place_match: bool = Field(default=False)
 
 class Tournament(TournamentBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -28,6 +30,10 @@ class TournamentScheduleCreate(SQLModel):
     interval_days: int = Field(default=1)
     matches_per_day: int = Field(default=1)
     total_time: int = Field(default=90)
+
+class TournamentKnockoutCreate(TournamentScheduleCreate):
+    stage_interval_days: int = Field(default=7) # Days between rounds
+    generate_third_place: bool = Field(default=False)
 
 class TournamentUpdate(SQLModel):
     name: Optional[str] = None

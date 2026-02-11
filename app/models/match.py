@@ -25,6 +25,10 @@ class MatchBase(SQLModel):
     second_half_start: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     match_day: int = Field(default=1, index=True)
+    stage: Optional[str] = Field(default=None, index=True) # e.g. "Round of 16", "Quarter-final"
+    penalty_score_a: int = Field(default=0)
+    penalty_score_b: int = Field(default=0)
+    is_extra_time: bool = Field(default=False)
 
 class Match(MatchBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

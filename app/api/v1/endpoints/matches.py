@@ -47,9 +47,17 @@ def create_match(*, session: Session = Depends(get_session), match: MatchCreate)
 
 @router.get("/", response_model=List[EnrichedMatchRead])
 def read_matches(
-    *, session: Session = Depends(get_session), offset: int = 0, limit: int = 100
+    *, 
+    session: Session = Depends(get_session), 
+    offset: int = 0, 
+    limit: int = 100,
+    tournament_id: Optional[uuid.UUID] = None
 ):
-    matches = session.exec(select(Match).offset(offset).limit(limit)).all()
+    query = select(Match)
+    if tournament_id:
+        query = query.where(Match.tournament_id == tournament_id)
+        
+    matches = session.exec(query.offset(offset).limit(limit)).all()
     result = []
     for m in matches:
         em = EnrichedMatchRead.model_validate(m)
