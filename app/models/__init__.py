@@ -5,3 +5,4 @@ from .match import Match
 from .standing import Standing
 from .user import User
 from .competition import Competition
+from .news import News
