@@ -243,8 +243,13 @@ def set_lineups(
                 detail="Match data is locked and cannot be changed after 1 hour of completion"
             )
 
-    # Delete existing lineups for this match
-    existing_lineups = session.exec(select(Lineup).where(Lineup.match_id == match_id)).all()
+    # Delete existing lineups for this match for teams being updated
+    target_team_ids = {l.team_id for l in lineups}
+    existing_lineups = session.exec(
+        select(Lineup)
+        .where(Lineup.match_id == match_id)
+        .where(Lineup.team_id.in_(target_team_ids))
+    ).all()
     for l in existing_lineups:
         session.delete(l)
     

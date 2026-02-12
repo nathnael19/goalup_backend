@@ -4,8 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.player import Player, PlayerCreate, PlayerRead, PlayerUpdate
+from app.models.team import Team
 from app.api.v1.deps import get_current_tournament_admin, get_current_superuser, get_current_active_user
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
 
 router = APIRouter()
@@ -93,6 +94,12 @@ def update_player(
         raise HTTPException(status_code=403, detail="The user doesn't have enough privileges")
 
     player_data = player.model_dump(exclude_unset=True)
+    
+    # RBAC: Coaches cannot edit player stats (goals, cards)
+    if current_user.role == UserRole.COACH:
+        for stat_field in ["goals", "yellow_cards", "red_cards"]:
+            if stat_field in player_data:
+                player_data.pop(stat_field)
     
     # Handle position lowercase if provided
     if "position" in player_data and player_data["position"]:
