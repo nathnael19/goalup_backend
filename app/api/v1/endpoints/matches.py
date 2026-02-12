@@ -1,6 +1,6 @@
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.match import Match, MatchCreate, MatchRead, MatchUpdate
@@ -215,18 +215,24 @@ def set_lineups(
     session: Session = Depends(get_session), 
     match_id: uuid.UUID, 
     lineups: List[Lineup],
+    formation_a: Optional[str] = Query(None),
+    formation_b: Optional[str] = Query(None),
     current_user: User = Depends(get_current_active_user)
 ):
+    print(f"DEBUG: set_lineups called by {current_user.email} (Role: {current_user.role}, TeamID: {current_user.team_id}, Type: {type(current_user.team_id)})")
     # RBAC Check: Coaches can only set lineups for THEIR team
     if current_user.role == UserRole.COACH:
         if not current_user.team_id:
+             print("DEBUG: Coach has no team_id")
              raise HTTPException(status_code=403, detail="Coach user has no assigned team")
         
         # Verify all lineups being set are for the coach's team
         for l in lineups:
-            if l.team_id != current_user.team_id:
+            if str(l.team_id) != str(current_user.team_id):
+                print(f"DEBUG: Coach team_id mismatch. Expected {current_user.team_id} ({type(current_user.team_id)}), got {l.team_id} ({type(l.team_id)})")
                 raise HTTPException(status_code=403, detail="Coaches can only manage their own team's lineup")
     elif current_user.role not in [UserRole.SUPER_ADMIN, UserRole.TOURNAMENT_ADMIN]:
+        print(f"DEBUG: Role {current_user.role} not authorized")
         raise HTTPException(status_code=403, detail="Only coaches or admins can set lineups")
 
     db_match = session.get(Match, match_id)
@@ -242,6 +248,19 @@ def set_lineups(
                 status_code=403, 
                 detail="Match data is locked and cannot be changed after 1 hour of completion"
             )
+
+    # Update formations if provided
+    if formation_a is not None:
+        # Coaches can only update their own team's formation
+        if current_user.role == UserRole.COACH and current_user.team_id != db_match.team_a_id:
+            pass  # Silently skip - coach can't set opponent's formation
+        else:
+            db_match.formation_a = formation_a
+    if formation_b is not None:
+        if current_user.role == UserRole.COACH and current_user.team_id != db_match.team_b_id:
+            pass
+        else:
+            db_match.formation_b = formation_b
 
     # Delete existing lineups for this match for teams being updated
     target_team_ids = {l.team_id for l in lineups}

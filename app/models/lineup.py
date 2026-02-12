@@ -7,6 +7,7 @@ class LineupBase(SQLModel):
     team_id: uuid.UUID = Field(foreign_key="team.id",ondelete="CASCADE")
     player_id: uuid.UUID = Field(foreign_key="player.id",ondelete="CASCADE")
     is_starting: bool = Field(default=True)
+    slot_index: Optional[int] = Field(default=None)
 
 class Lineup(LineupBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

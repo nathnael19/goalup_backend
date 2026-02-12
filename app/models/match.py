@@ -29,6 +29,8 @@ class MatchBase(SQLModel):
     penalty_score_a: int = Field(default=0)
     penalty_score_b: int = Field(default=0)
     is_extra_time: bool = Field(default=False)
+    formation_a: str = Field(default="4-3-3")
+    formation_b: str = Field(default="4-3-3")
 
 class Match(MatchBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -63,6 +65,8 @@ class MatchUpdate(SQLModel):
     second_half_start: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     match_day: Optional[int] = None
+    formation_a: Optional[str] = None
+    formation_b: Optional[str] = None
 
 from app.models.card import Card
 from app.models.goal import Goal
