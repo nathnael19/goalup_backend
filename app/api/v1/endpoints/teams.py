@@ -1,11 +1,11 @@
 import uuid
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.team import Team, TeamCreate, TeamRead, TeamUpdate, TeamReadWithTournaments, TeamReadDetail
 from app.models.standing import Standing
-from app.models.tournament import Tournament
+from app.models.tournament import Tournament, TournamentRead
 from app.core.audit import record_audit_log
 
 router = APIRouter()
@@ -41,11 +41,19 @@ def create_team(*, session: Session = Depends(get_session), team: TeamCreate):
     return db_team
 
     
-@router.get("/", response_model=List[TeamRead])
+class TeamReadWithTournament(TeamRead):
+    tournament: Optional[TournamentRead] = None
+    
+@router.get("/", response_model=List[TeamReadWithTournament])
 def read_teams(session: Session = Depends(get_session)):
-    # Simple query now that we have the column
     teams = session.exec(select(Team)).all()
-    return teams
+    result = []
+    for t in teams:
+        tt = TeamReadWithTournament.model_validate(t)
+        if t.tournament_id:
+            tt.tournament = session.get(Tournament, t.tournament_id)
+        result.append(tt)
+    return result
 
 
 @router.get("/{team_id}", response_model=TeamReadDetail)

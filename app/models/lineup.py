@@ -3,9 +3,9 @@ from typing import Optional
 from sqlmodel import Field, SQLModel, Relationship
 
 class LineupBase(SQLModel):
-    match_id: uuid.UUID = Field(foreign_key="match.id")
-    team_id: uuid.UUID = Field(foreign_key="team.id")
-    player_id: uuid.UUID = Field(foreign_key="player.id")
+    match_id: uuid.UUID = Field(foreign_key="match.id",ondelete="CASCADE")
+    team_id: uuid.UUID = Field(foreign_key="team.id",ondelete="CASCADE")
+    player_id: uuid.UUID = Field(foreign_key="player.id",ondelete="CASCADE")
     is_starting: bool = Field(default=True)
 
 class Lineup(LineupBase, table=True):
@@ -18,6 +18,9 @@ class Lineup(LineupBase, table=True):
 class LineupRead(LineupBase):
     id: uuid.UUID
 
+class LineupReadWithPlayer(LineupRead):
+    player: Optional["PlayerRead"] = None
+
 from app.models.match import Match
 from app.models.team import Team
-from app.models.player import Player
+from app.models.player import Player, PlayerRead

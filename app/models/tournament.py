@@ -21,6 +21,9 @@ class Tournament(TournamentBase, table=True):
     matches: List["Match"] = Relationship(back_populates="tournament", cascade_delete=True)
     standings: List["Standing"] = Relationship(back_populates="tournament", cascade_delete=True)
     teams: List["Team"] = Relationship(back_populates="tournaments", link_model=Standing, sa_relationship_kwargs={"overlaps": "standings,tournament,team"})
+    
+    # Direct relationship to handle cascade delete of teams belonging to this tournament
+    registered_teams: List["Team"] = Relationship(sa_relationship_kwargs={"cascade": "all, delete-orphan", "foreign_keys": "Team.tournament_id"})
 
 class TournamentCreate(TournamentBase):
     pass

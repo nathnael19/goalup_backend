@@ -4,10 +4,10 @@ from sqlmodel import Field, SQLModel, Relationship
 from datetime import datetime
 
 class SubstitutionBase(SQLModel):
-    match_id: uuid.UUID = Field(foreign_key="match.id")
-    team_id: uuid.UUID = Field(foreign_key="team.id")
-    player_in_id: uuid.UUID = Field(foreign_key="player.id")
-    player_out_id: uuid.UUID = Field(foreign_key="player.id")
+    match_id: uuid.UUID = Field(foreign_key="match.id",ondelete="CASCADE")
+    team_id: uuid.UUID = Field(foreign_key="team.id",ondelete="CASCADE")
+    player_in_id: uuid.UUID = Field(foreign_key="player.id",ondelete="CASCADE")
+    player_out_id: uuid.UUID = Field(foreign_key="player.id",ondelete="CASCADE")
     minute: int
     
 class Substitution(SubstitutionBase, table=True):
@@ -26,6 +26,10 @@ class SubstitutionRead(SubstitutionBase):
     id: uuid.UUID
     created_at: datetime
 
+class SubstitutionReadWithPlayers(SubstitutionRead):
+    player_in: Optional["PlayerRead"] = None
+    player_out: Optional["PlayerRead"] = None
+
 from app.models.match import Match
 from app.models.team import Team
-from app.models.player import Player
+from app.models.player import Player, PlayerRead

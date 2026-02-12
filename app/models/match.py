@@ -10,9 +10,9 @@ class MatchStatus(str, Enum):
     finished = "finished"
 
 class MatchBase(SQLModel):
-    tournament_id: uuid.UUID = Field(foreign_key="tournament.id")
-    team_a_id: uuid.UUID = Field(foreign_key="team.id")
-    team_b_id: uuid.UUID = Field(foreign_key="team.id")
+    tournament_id: uuid.UUID = Field(foreign_key="tournament.id",ondelete="CASCADE")
+    team_a_id: uuid.UUID = Field(foreign_key="team.id",ondelete="CASCADE")
+    team_b_id: uuid.UUID = Field(foreign_key="team.id",ondelete="CASCADE")
     score_a: int = Field(default=0)
     score_b: int = Field(default=0)
     status: MatchStatus = Field(default=MatchStatus.scheduled)

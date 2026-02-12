@@ -3,8 +3,8 @@ from typing import Optional, List
 from sqlmodel import Field, SQLModel, Relationship
 
 class StandingBase(SQLModel):
-    tournament_id: uuid.UUID = Field(foreign_key="tournament.id")
-    team_id: uuid.UUID = Field(foreign_key="team.id")
+    tournament_id: uuid.UUID = Field(foreign_key="tournament.id",ondelete="CASCADE")
+    team_id: uuid.UUID = Field(foreign_key="team.id",ondelete="CASCADE")
     played: int = Field(default=0)
     won: int = Field(default=0)
     drawn: int = Field(default=0)

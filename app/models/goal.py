@@ -3,10 +3,10 @@ from typing import Optional
 from sqlmodel import Field, SQLModel, Relationship
 
 class GoalBase(SQLModel):
-    match_id: uuid.UUID = Field(foreign_key="match.id")
-    player_id: Optional[uuid.UUID] = Field(default=None, foreign_key="player.id")
-    assistant_id: Optional[uuid.UUID] = Field(default=None, foreign_key="player.id")
-    team_id: uuid.UUID = Field(foreign_key="team.id")
+    match_id: uuid.UUID = Field(foreign_key="match.id",ondelete="CASCADE")
+    player_id: Optional[uuid.UUID] = Field(default=None, foreign_key="player.id",ondelete="CASCADE")
+    assistant_id: Optional[uuid.UUID] = Field(default=None, foreign_key="player.id",ondelete="CASCADE")
+    team_id: uuid.UUID = Field(foreign_key="team.id",ondelete="CASCADE")
     minute: int
     is_own_goal: bool = Field(default=False)
 

@@ -10,7 +10,7 @@ class CompetitionBase(SQLModel):
 class Competition(CompetitionBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     
-    tournaments: List["Tournament"] = Relationship(back_populates="competition")
+    tournaments: List["Tournament"] = Relationship(back_populates="competition", cascade_delete=True)
 
 class CompetitionCreate(CompetitionBase):
     pass

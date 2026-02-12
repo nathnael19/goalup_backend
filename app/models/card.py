@@ -9,9 +9,9 @@ class CardType(str, Enum):
     red = "red"
 
 class CardBase(SQLModel):
-    match_id: uuid.UUID = Field(foreign_key="match.id")
-    player_id: uuid.UUID = Field(foreign_key="player.id")
-    team_id: uuid.UUID = Field(foreign_key="team.id")
+    match_id: uuid.UUID = Field(foreign_key="match.id",ondelete="CASCADE")
+    player_id: uuid.UUID = Field(foreign_key="player.id",ondelete="CASCADE")
+    team_id: uuid.UUID = Field(foreign_key="team.id",ondelete="CASCADE")
     minute: int
     type: CardType
 

@@ -17,8 +17,8 @@ class NewsBase(SQLModel):
     content: str
     category: NewsCategory = Field(default=NewsCategory.general)
     image_url: Optional[str] = None
-    team_id: Optional[uuid.UUID] = Field(default=None, foreign_key="team.id")
-    player_id: Optional[uuid.UUID] = Field(default=None, foreign_key="player.id")
+    team_id: Optional[uuid.UUID] = Field(default=None, foreign_key="team.id",ondelete="CASCADE")
+    player_id: Optional[uuid.UUID] = Field(default=None, foreign_key="player.id",ondelete="CASCADE")
     is_published: bool = Field(default=True)
 
 

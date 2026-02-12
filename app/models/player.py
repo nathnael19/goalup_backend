@@ -19,7 +19,7 @@ class PlayerPosition(str, Enum):
 
 class PlayerBase(SQLModel):
     name: str
-    team_id: uuid.UUID = Field(foreign_key="team.id")
+    team_id: uuid.UUID = Field(foreign_key="team.id",ondelete="CASCADE")
     jersey_number: int
     position: PlayerPosition = Field(sa_column_kwargs={"name": "player_position_enum"})
     goals: int = Field(default=0)

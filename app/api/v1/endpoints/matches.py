@@ -6,7 +6,10 @@ from app.core.database import get_session
 from app.models.match import Match, MatchCreate, MatchRead, MatchUpdate
 from app.models.team import Team, TeamRead
 from app.models.tournament import Tournament, TournamentRead
-from app.models.lineup import Lineup, LineupRead
+from app.models.lineup import Lineup, LineupRead, LineupReadWithPlayer
+from app.models.goal import Goal, GoalReadWithPlayer
+from app.models.card import Card, CardReadWithPlayer
+from app.models.substitution import Substitution, SubstitutionReadWithPlayers
 from app.core.audit import record_audit_log
 
 router = APIRouter()
@@ -15,7 +18,10 @@ class EnrichedMatchRead(MatchRead):
     tournament: Optional[TournamentRead] = None
     team_a: Optional[TeamRead] = None
     team_b: Optional[TeamRead] = None
-    lineups: List[LineupRead] = []
+    lineups: List[LineupReadWithPlayer] = []
+    goals: List[GoalReadWithPlayer] = []
+    cards: List[CardReadWithPlayer] = []
+    substitutions: List[SubstitutionReadWithPlayers] = []
 
 @router.post("/", response_model=MatchRead)
 def create_match(*, session: Session = Depends(get_session), match: MatchCreate):
@@ -64,7 +70,11 @@ def read_matches(
         em.tournament = session.get(Tournament, m.tournament_id)
         em.team_a = session.get(Team, m.team_a_id)
         em.team_b = session.get(Team, m.team_b_id)
+        # Fetch detailed lists
         em.lineups = session.exec(select(Lineup).where(Lineup.match_id == m.id)).all()
+        em.goals = session.exec(select(Goal).where(Goal.match_id == m.id)).all()
+        em.cards = session.exec(select(Card).where(Card.match_id == m.id)).all()
+        em.substitutions = session.exec(select(Substitution).where(Substitution.match_id == m.id)).all()
         result.append(em)
     return result
 
@@ -78,7 +88,12 @@ def read_match(*, session: Session = Depends(get_session), match_id: uuid.UUID):
     em.tournament = session.get(Tournament, match.tournament_id)
     em.team_a = session.get(Team, match.team_a_id)
     em.team_b = session.get(Team, match.team_b_id)
+    
     em.lineups = session.exec(select(Lineup).where(Lineup.match_id == match_id)).all()
+    em.goals = session.exec(select(Goal).where(Goal.match_id == match_id)).all()
+    em.cards = session.exec(select(Card).where(Card.match_id == match_id)).all()
+    em.substitutions = session.exec(select(Substitution).where(Substitution.match_id == match_id)).all()
+    
     return em
 
 @router.put("/{match_id}", response_model=MatchRead)
