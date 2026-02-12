@@ -6,12 +6,19 @@ from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.tournament import Tournament, TournamentCreate, TournamentRead, TournamentUpdate, TournamentReadWithTeams, TournamentScheduleCreate, TournamentKnockoutCreate
 from app.models.match import Match, MatchStatus
+from app.api.v1.deps import get_current_tournament_admin, get_current_superuser
+from app.models.user import User
 from app.core.audit import record_audit_log
 
 router = APIRouter()
 
 @router.post("/", response_model=TournamentRead)
-def create_tournament(*, session: Session = Depends(get_session), tournament: TournamentCreate):
+def create_tournament(
+    *, 
+    session: Session = Depends(get_session), 
+    tournament: TournamentCreate,
+    current_user: User = Depends(get_current_tournament_admin)
+):
     db_tournament = Tournament.model_validate(tournament)
     session.add(db_tournament)
     session.commit()
@@ -32,7 +39,11 @@ def read_tournament(*, session: Session = Depends(get_session), tournament_id: u
 
 @router.put("/{tournament_id}", response_model=TournamentRead)
 def update_tournament(
-    *, session: Session = Depends(get_session), tournament_id: uuid.UUID, tournament: TournamentUpdate
+    *, 
+    session: Session = Depends(get_session), 
+    tournament_id: uuid.UUID, 
+    tournament: TournamentUpdate,
+    current_user: User = Depends(get_current_tournament_admin)
 ):
     db_tournament = session.get(Tournament, tournament_id)
     if not db_tournament:
@@ -47,7 +58,10 @@ def update_tournament(
 
 @router.delete("/{tournament_id}")
 def delete_tournament(
-    *, session: Session = Depends(get_session), tournament_id: uuid.UUID
+    *, 
+    session: Session = Depends(get_session), 
+    tournament_id: uuid.UUID,
+    current_user: User = Depends(get_current_superuser)
 ):
     db_tournament = session.get(Tournament, tournament_id)
     if not db_tournament:
@@ -67,7 +81,11 @@ def delete_tournament(
 
 @router.post("/{tournament_id}/schedule")
 def schedule_tournament(
-    *, session: Session = Depends(get_session), tournament_id: uuid.UUID, schedule: TournamentScheduleCreate
+    *, 
+    session: Session = Depends(get_session), 
+    tournament_id: uuid.UUID, 
+    schedule: TournamentScheduleCreate,
+    current_user: User = Depends(get_current_tournament_admin)
 ):
     tournament = session.get(Tournament, tournament_id)
     if not tournament:
@@ -180,7 +198,11 @@ def schedule_tournament(
     return {"ok": True, "matches_created": len(created_matches)}
 @router.post("/{tournament_id}/generate-knockout")
 def generate_knockout_fixtures(
-    *, session: Session = Depends(get_session), tournament_id: uuid.UUID, schedule: TournamentKnockoutCreate
+    *, 
+    session: Session = Depends(get_session), 
+    tournament_id: uuid.UUID, 
+    schedule: TournamentKnockoutCreate,
+    current_user: User = Depends(get_current_tournament_admin)
 ):
     tournament = session.get(Tournament, tournament_id)
     if not tournament:

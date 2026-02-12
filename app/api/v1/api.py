@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import (
     tournaments, teams, players, matches, standings, auth, 
-    uploads, goals, cards, competitions, substitutions, news, audit_logs
+    uploads, goals, cards, competitions, substitutions, news, audit_logs, users
 )
 
 api_router = APIRouter()
@@ -18,4 +18,5 @@ api_router.include_router(competitions.router, prefix="/competitions", tags=["co
 api_router.include_router(substitutions.router, prefix="/substitutions", tags=["substitutions"])
 api_router.include_router(news.router, prefix="/news", tags=["news"])
 api_router.include_router(audit_logs.router, prefix="/audit-logs", tags=["audit-logs"])
+api_router.include_router(users.router, prefix="/users", tags=["users"])
 

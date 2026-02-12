@@ -6,12 +6,24 @@ from app.core.database import get_session
 from app.models.team import Team, TeamCreate, TeamRead, TeamUpdate, TeamReadWithTournaments, TeamReadDetail
 from app.models.standing import Standing
 from app.models.tournament import Tournament, TournamentRead
+from app.api.v1.deps import get_current_tournament_admin, get_current_superuser
+from app.models.user import User
 from app.core.audit import record_audit_log
 
 router = APIRouter()
 
 @router.post("/", response_model=TeamRead)
-def create_team(*, session: Session = Depends(get_session), team: TeamCreate):
+def create_team(
+    *, 
+    session: Session = Depends(get_session), 
+    team: TeamCreate,
+    current_user: User = Depends(get_current_tournament_admin)
+):
+    # RBAC Check: Tournament Admins can only create teams for THEIR tournament
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if current_user.tournament_id != team.tournament_id:
+            raise HTTPException(status_code=403, detail="Tournament Admins can only create teams for their assigned tournament")
+
     # Verify tournament exists
     tournament = session.get(Tournament, team.tournament_id)
     if not tournament:
@@ -97,11 +109,21 @@ def read_team(*, session: Session = Depends(get_session), team_id: uuid.UUID):
 
 @router.put("/{team_id}", response_model=TeamRead)
 def update_team(
-    *, session: Session = Depends(get_session), team_id: uuid.UUID, team: TeamUpdate
+    *, 
+    session: Session = Depends(get_session), 
+    team_id: uuid.UUID, 
+    team: TeamUpdate,
+    current_user: User = Depends(get_current_tournament_admin)
 ):
     db_team = session.get(Team, team_id)
     if not db_team:
         raise HTTPException(status_code=404, detail="Team not found")
+    
+    # RBAC Check: Tournament Admins can only update teams for THEIR tournament
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if current_user.tournament_id != db_team.tournament_id:
+            raise HTTPException(status_code=403, detail="Tournament Admins can only update teams for their assigned tournament")
+            
     team_data = team.model_dump(exclude_unset=True)
     
     # Handle tournament update if present
@@ -145,7 +167,10 @@ def update_team(
 
 @router.delete("/{team_id}")
 def delete_team(
-    *, session: Session = Depends(get_session), team_id: uuid.UUID
+    *, 
+    session: Session = Depends(get_session), 
+    team_id: uuid.UUID,
+    current_user: User = Depends(get_current_superuser)
 ):
     db_team = session.get(Team, team_id)
     if not db_team:

@@ -5,13 +5,20 @@ from sqlmodel import Session, select
 from datetime import datetime
 from app.core.database import get_session
 from app.models.news import News, NewsCreate, NewsRead, NewsUpdate, NewsCategory
+from app.api.v1.deps import get_current_news_reporter, get_current_superuser
+from app.models.user import User
 from app.core.audit import record_audit_log
 
 router = APIRouter()
 
 
 @router.post("/", response_model=NewsRead)
-def create_news(*, session: Session = Depends(get_session), news: NewsCreate):
+def create_news(
+    *, 
+    session: Session = Depends(get_session), 
+    news: NewsCreate,
+    current_user: User = Depends(get_current_news_reporter)
+):
     db_news = News.model_validate(news)
     session.add(db_news)
     
@@ -62,7 +69,11 @@ def read_news_by_id(*, session: Session = Depends(get_session), news_id: uuid.UU
 
 @router.put("/{news_id}", response_model=NewsRead)
 def update_news(
-    *, session: Session = Depends(get_session), news_id: uuid.UUID, news: NewsUpdate
+    *, 
+    session: Session = Depends(get_session), 
+    news_id: uuid.UUID, 
+    news: NewsUpdate,
+    current_user: User = Depends(get_current_news_reporter)
 ):
     db_news = session.get(News, news_id)
     if not db_news:
@@ -88,7 +99,12 @@ def update_news(
 
 
 @router.delete("/{news_id}")
-def delete_news(*, session: Session = Depends(get_session), news_id: uuid.UUID):
+def delete_news(
+    *, 
+    session: Session = Depends(get_session), 
+    news_id: uuid.UUID,
+    current_user: User = Depends(get_current_news_reporter)
+):
     news = session.get(News, news_id)
     if not news:
         raise HTTPException(status_code=404, detail="News article not found")

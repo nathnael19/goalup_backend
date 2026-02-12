@@ -7,12 +7,19 @@ from app.models.goal import Goal, GoalCreate, GoalRead, GoalReadWithPlayer
 from app.models.match import Match
 from app.models.player import Player
 from app.models.team import Team
+from app.api.v1.deps import get_current_active_user, get_current_referee, get_current_superuser
+from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
 
 router = APIRouter()
 
 @router.post("/", response_model=GoalReadWithPlayer)
-def create_goal(*, session: Session = Depends(get_session), goal: GoalCreate):
+def create_goal(
+    *, 
+    session: Session = Depends(get_session), 
+    goal: GoalCreate,
+    current_user: User = Depends(get_current_referee)
+):
     # Verify match and teams exist
     match = session.get(Match, goal.match_id)
     if not match:
@@ -77,7 +84,12 @@ def read_match_goals(*, session: Session = Depends(get_session), match_id: uuid.
     return goals
 
 @router.delete("/{goal_id}")
-def delete_goal(*, session: Session = Depends(get_session), goal_id: uuid.UUID):
+def delete_goal(
+    *, 
+    session: Session = Depends(get_session), 
+    goal_id: uuid.UUID,
+    current_user: User = Depends(get_current_referee)
+):
     db_goal = session.get(Goal, goal_id)
     if not db_goal:
         raise HTTPException(status_code=404, detail="Goal not found")

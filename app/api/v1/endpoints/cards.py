@@ -7,12 +7,19 @@ from app.models.card import Card, CardCreate, CardRead, CardReadWithPlayer
 from app.models.match import Match
 from app.models.player import Player
 from app.models.team import Team
+from app.api.v1.deps import get_current_active_user, get_current_referee, get_current_superuser
+from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
 
 router = APIRouter()
 
 @router.post("/", response_model=CardReadWithPlayer)
-def create_card(*, session: Session = Depends(get_session), card: CardCreate):
+def create_card(
+    *, 
+    session: Session = Depends(get_session), 
+    card: CardCreate,
+    current_user: User = Depends(get_current_referee)
+):
     # Verify match exists
     match = session.get(Match, card.match_id)
     if not match:
@@ -63,7 +70,12 @@ def read_match_cards(*, session: Session = Depends(get_session), match_id: uuid.
     return cards
 
 @router.delete("/{card_id}")
-def delete_card(*, session: Session = Depends(get_session), card_id: uuid.UUID):
+def delete_card(
+    *, 
+    session: Session = Depends(get_session), 
+    card_id: uuid.UUID,
+    current_user: User = Depends(get_current_referee)
+):
     db_card = session.get(Card, card_id)
     if not db_card:
         raise HTTPException(status_code=404, detail="Card not found")

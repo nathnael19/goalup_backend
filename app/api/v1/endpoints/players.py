@@ -4,13 +4,28 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.player import Player, PlayerCreate, PlayerRead, PlayerUpdate
-from app.models.team import Team
+from app.api.v1.deps import get_current_tournament_admin, get_current_superuser, get_current_active_user
+from app.models.user import User
 from app.core.audit import record_audit_log
 
 router = APIRouter()
 
 @router.post("/", response_model=PlayerRead)
-def create_player(*, session: Session = Depends(get_session), player: PlayerCreate):
+def create_player(
+    *, 
+    session: Session = Depends(get_session), 
+    player: PlayerCreate,
+    current_user: User = Depends(get_current_active_user)
+):
+    # RBAC Check: Coaches can only create for THEIR team
+    if current_user.role == UserRole.COACH:
+        if not current_user.team_id:
+            raise HTTPException(status_code=403, detail="Coach user has no assigned team")
+        if player.team_id != current_user.team_id:
+            raise HTTPException(status_code=403, detail="Coaches can only create players for their own team")
+    elif current_user.role not in [UserRole.SUPER_ADMIN, UserRole.TOURNAMENT_ADMIN]:
+        raise HTTPException(status_code=403, detail="The user doesn't have enough privileges")
+
     # Manual lowercase to handle any potential Enum/SQLAlchemy mismatch
     player.position = player.position.lower()
     
@@ -60,12 +75,23 @@ def read_player(*, session: Session = Depends(get_session), player_id: uuid.UUID
 
 @router.put("/{player_id}", response_model=PlayerRead)
 def update_player(
-    *, session: Session = Depends(get_session), player_id: uuid.UUID, player: PlayerUpdate
+    *, 
+    session: Session = Depends(get_session), 
+    player_id: uuid.UUID, 
+    player: PlayerUpdate,
+    current_user: User = Depends(get_current_active_user)
 ):
     db_player = session.get(Player, player_id)
     if not db_player:
         raise HTTPException(status_code=404, detail="Player not found")
     
+    # RBAC Check: Coaches can only update THEIR team's players
+    if current_user.role == UserRole.COACH:
+        if db_player.team_id != current_user.team_id:
+            raise HTTPException(status_code=403, detail="Coaches can only update their own team's players")
+    elif current_user.role not in [UserRole.SUPER_ADMIN, UserRole.TOURNAMENT_ADMIN]:
+        raise HTTPException(status_code=403, detail="The user doesn't have enough privileges")
+
     player_data = player.model_dump(exclude_unset=True)
     
     # Handle position lowercase if provided
@@ -109,10 +135,23 @@ def update_player(
     return db_player
 
 @router.delete("/{player_id}")
-def delete_player(*, session: Session = Depends(get_session), player_id: uuid.UUID):
+def delete_player(
+    *, 
+    session: Session = Depends(get_session), 
+    player_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_user)
+):
     db_player = session.get(Player, player_id)
     if not db_player:
         raise HTTPException(status_code=404, detail="Player not found")
+
+    # RBAC Check: Coaches can only delete THEIR team's players
+    if current_user.role == UserRole.COACH:
+        if db_player.team_id != current_user.team_id:
+            raise HTTPException(status_code=403, detail="Coaches can only delete their own team's players")
+    elif current_user.role not in [UserRole.SUPER_ADMIN]: # Tournament Admins usually don't delete players? Plan says Super Admin only for deletion.
+        raise HTTPException(status_code=403, detail="The user doesn't have enough privileges")
+
     # Audit Log
     record_audit_log(
         session,

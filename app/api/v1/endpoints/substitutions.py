@@ -7,12 +7,19 @@ from app.models.substitution import Substitution, SubstitutionCreate, Substituti
 from app.models.match import Match
 from app.models.team import Team
 from app.models.player import Player
+from app.api.v1.deps import get_current_active_user, get_current_referee, get_current_superuser
+from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
 
 router = APIRouter()
 
 @router.post("/", response_model=SubstitutionRead)
-def create_substitution(*, session: Session = Depends(get_session), substitution: SubstitutionCreate):
+def create_substitution(
+    *, 
+    session: Session = Depends(get_session), 
+    substitution: SubstitutionCreate,
+    current_user: User = Depends(get_current_referee)
+):
     match = session.get(Match, substitution.match_id)
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
@@ -53,7 +60,12 @@ def read_substitutions_by_match(
     return substitutions
 
 @router.delete("/{substitution_id}")
-def delete_substitution(*, session: Session = Depends(get_session), substitution_id: uuid.UUID):
+def delete_substitution(
+    *, 
+    session: Session = Depends(get_session), 
+    substitution_id: uuid.UUID,
+    current_user: User = Depends(get_current_referee)
+):
     substitution = session.get(Substitution, substitution_id)
     if not substitution:
         raise HTTPException(status_code=404, detail="Substitution not found")

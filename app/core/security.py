@@ -1,3 +1,10 @@
+import bcrypt
+
+# Fix for passlib compatibility with bcrypt 4.0.0+ on Python 3.13
+# This MUST happen before passlib is imported
+if not hasattr(bcrypt, "__about__"):
+    bcrypt.__about__ = bcrypt
+
 from datetime import datetime, timedelta
 from typing import Optional
 import jwt

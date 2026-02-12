@@ -6,7 +6,7 @@ sys.path.append(os.getcwd())
 
 from sqlmodel import Session, select
 from app.core.database import engine, create_db_and_tables
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.core.security import get_password_hash
 
 def create_superuser(email, password):
@@ -21,12 +21,13 @@ def create_superuser(email, password):
         if existing_user:
             print(f"User with email {email} already exists.")
             # Optionally update to superuser if it's not
-            if not existing_user.is_superuser:
+            if not existing_user.is_superuser or existing_user.role != UserRole.SUPER_ADMIN:
                 existing_user.is_superuser = True
+                existing_user.role = UserRole.SUPER_ADMIN
                 existing_user.hashed_password = get_password_hash(password)
                 session.add(existing_user)
                 session.commit()
-                print(f"Updated existing user {email} to superuser.")
+                print(f"Updated existing user {email} to super admin.")
             return
 
         # Create new superuser
@@ -35,11 +36,12 @@ def create_superuser(email, password):
             full_name="Super Admin",
             hashed_password=get_password_hash(password),
             is_active=True,
-            is_superuser=True
+            is_superuser=True,
+            role=UserRole.SUPER_ADMIN
         )
         session.add(new_user)
         session.commit()
-        print(f"Superuser {email} created successfully.")
+        print(f"Superuser {email} created successfully with role SUPER_ADMIN.")
 
 if __name__ == "__main__":
     email = "nathnaelnigussie19@gmail.com"
