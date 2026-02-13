@@ -10,11 +10,16 @@ from app.models.tournament import Tournament, TournamentRead
 
 router = APIRouter()
 
+from app.models.competition import CompetitionRead
+
 class TeamStandingRead(StandingRead):
     team: Optional[TeamRead] = None
 
+class TournamentReadWithCompetition(TournamentRead):
+    competition: Optional[CompetitionRead] = None
+
 class GroupedTournamentStandings(SQLModel):
-    tournament: TournamentRead
+    tournament: TournamentReadWithCompetition
     teams: List[TeamStandingRead]
 
 @router.get("/", response_model=List[GroupedTournamentStandings])
@@ -39,7 +44,7 @@ def read_standings(year: Optional[int] = None, session: Session = Depends(get_se
             team_standings.append(ts)
             
         result.append(GroupedTournamentStandings(
-            tournament=t,
+            tournament=TournamentReadWithCompetition.model_validate(t, update={"competition": t.competition}),
             teams=team_standings
         ))
         
@@ -64,7 +69,7 @@ def get_tournament_standings(*, session: Session = Depends(get_session), tournam
         team_standings.append(ts)
         
     return GroupedTournamentStandings(
-        tournament=tournament,
+        tournament=TournamentReadWithCompetition.model_validate(tournament, update={"competition": tournament.competition}),
         teams=team_standings
     )
 

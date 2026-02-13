@@ -23,6 +23,7 @@ class PlayerBase(SQLModel):
     jersey_number: int
     position: PlayerPosition = Field(sa_column_kwargs={"name": "player_position_enum"})
     goals: int = Field(default=0)
+    assists: int = Field(default=0)
     yellow_cards: int = Field(default=0)
     red_cards: int = Field(default=0)
     image_url: Optional[str] = None
@@ -66,6 +67,7 @@ class PlayerUpdate(SQLModel):
     jersey_number: Optional[int] = None
     position: Optional[PlayerPosition] = None
     goals: Optional[int] = None
+    assists: Optional[int] = None
     yellow_cards: Optional[int] = None
     red_cards: Optional[int] = None
     image_url: Optional[str] = None
