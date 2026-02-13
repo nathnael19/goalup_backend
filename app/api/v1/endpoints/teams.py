@@ -7,7 +7,7 @@ from app.models.team import Team, TeamCreate, TeamRead, TeamUpdate, TeamReadWith
 from app.models.standing import Standing
 from app.models.tournament import Tournament, TournamentRead
 from app.api.v1.deps import get_current_tournament_admin, get_current_superuser
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
 
 router = APIRouter()
