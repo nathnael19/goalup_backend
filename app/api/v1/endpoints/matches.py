@@ -6,6 +6,7 @@ from app.core.database import get_session
 from app.models.match import Match, MatchCreate, MatchRead, MatchUpdate
 from app.models.team import Team, TeamRead
 from app.models.tournament import Tournament, TournamentRead
+from app.models.competition import Competition, CompetitionRead
 from app.models.lineup import Lineup, LineupRead, LineupReadWithPlayer
 from app.models.goal import Goal, GoalReadWithPlayer
 from app.models.card import Card, CardReadWithPlayer
@@ -16,8 +17,11 @@ from app.core.audit import record_audit_log
 
 router = APIRouter()
 
+class TournamentReadWithCompetition(TournamentRead):
+    competition: Optional[CompetitionRead] = None
+
 class EnrichedMatchRead(MatchRead):
-    tournament: Optional[TournamentRead] = None
+    tournament: Optional[TournamentReadWithCompetition] = None
     team_a: Optional[TeamRead] = None
     team_b: Optional[TeamRead] = None
     lineups: List[LineupReadWithPlayer] = []
@@ -79,7 +83,14 @@ def read_matches(
     result = []
     for m in matches:
         em = EnrichedMatchRead.model_validate(m)
-        em.tournament = session.get(Tournament, m.tournament_id)
+        tournament = session.get(Tournament, m.tournament_id)
+        if tournament:
+            tournament_dict = TournamentReadWithCompetition.model_validate(tournament).model_dump()
+            if tournament.competition_id:
+                competition = session.get(Competition, tournament.competition_id)
+                if competition:
+                    tournament_dict['competition'] = CompetitionRead.model_validate(competition).model_dump()
+            em.tournament = TournamentReadWithCompetition(**tournament_dict)
         em.team_a = session.get(Team, m.team_a_id)
         em.team_b = session.get(Team, m.team_b_id)
         # Fetch detailed lists
@@ -97,7 +108,14 @@ def read_match(*, session: Session = Depends(get_session), match_id: uuid.UUID):
         raise HTTPException(status_code=404, detail="Match not found")
     
     em = EnrichedMatchRead.model_validate(match)
-    em.tournament = session.get(Tournament, match.tournament_id)
+    tournament = session.get(Tournament, match.tournament_id)
+    if tournament:
+        tournament_dict = TournamentReadWithCompetition.model_validate(tournament).model_dump()
+        if tournament.competition_id:
+            competition = session.get(Competition, tournament.competition_id)
+            if competition:
+                tournament_dict['competition'] = CompetitionRead.model_validate(competition).model_dump()
+        em.tournament = TournamentReadWithCompetition(**tournament_dict)
     em.team_a = session.get(Team, match.team_a_id)
     em.team_b = session.get(Team, match.team_b_id)
     
