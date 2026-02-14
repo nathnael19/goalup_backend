@@ -9,8 +9,9 @@ from app.api.v1.deps import get_current_news_reporter, get_current_superuser
 from app.models.user import User
 from app.core.audit import record_audit_log
 
-router = APIRouter()
+from app.core.notification import create_notification
 
+router = APIRouter()
 
 @router.post("/", response_model=NewsRead)
 def create_news(
@@ -21,6 +22,15 @@ def create_news(
 ):
     db_news = News.model_validate(news)
     session.add(db_news)
+    
+    # Create notification
+    create_notification(
+        session,
+        title="New Article Published",
+        message=f"{db_news.title}",
+        notification_type="news",
+        link_id=str(db_news.id)
+    )
     
     # Audit Log
     record_audit_log(
