@@ -1,10 +1,3 @@
-import bcrypt
-
-# Fix for passlib compatibility with bcrypt 4.0.0+ on Python 3.13
-# This MUST happen before passlib is imported
-if not hasattr(bcrypt, "__about__"):
-    bcrypt.__about__ = bcrypt
-
 from datetime import datetime, timedelta
 from typing import Optional
 import jwt
@@ -12,7 +5,8 @@ from passlib.context import CryptContext
 from app.core.config import settings
 
 # Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Switching to sha256_crypt because bcrypt has a 72-byte limit
+pwd_context = CryptContext(schemes=["sha256_crypt", "bcrypt"], deprecated="auto")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against a hash."""
