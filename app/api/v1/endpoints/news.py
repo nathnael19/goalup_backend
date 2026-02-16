@@ -21,6 +21,7 @@ def create_news(
     current_user: User = Depends(get_current_news_reporter)
 ):
     db_news = News.model_validate(news)
+    db_news.reporter_id = current_user.id
     session.add(db_news)
     
     # Create notification
@@ -43,7 +44,11 @@ def create_news(
 
     session.commit()
     session.refresh(db_news)
-    return db_news
+    
+    # Return as NewsRead compatible dict
+    news_read = db_news.model_dump()
+    news_read["reporter_name"] = current_user.full_name
+    return news_read
 
 
 @router.get("/", response_model=List[NewsRead])
@@ -66,7 +71,17 @@ def read_news(
         
     query = query.offset(offset).limit(limit)
     news_list = session.exec(query).all()
-    return news_list
+    
+    results = []
+    for n in news_list:
+        n_dict = n.model_dump()
+        if n.reporter:
+            n_dict["reporter_name"] = n.reporter.full_name
+        else:
+            n_dict["reporter_name"] = "GoalUp Reporter"
+        results.append(n_dict)
+            
+    return results
 
 
 @router.get("/{news_id}", response_model=NewsRead)
@@ -74,7 +89,15 @@ def read_news_by_id(*, session: Session = Depends(get_session), news_id: uuid.UU
     news = session.get(News, news_id)
     if not news:
         raise HTTPException(status_code=404, detail="News article not found")
-    return news
+    
+    if news.reporter:
+        reporter_name = news.reporter.full_name
+    else:
+        reporter_name = "GoalUp Reporter"
+        
+    res = news.model_dump()
+    res["reporter_name"] = reporter_name
+    return res
 
 
 @router.put("/{news_id}", response_model=NewsRead)
@@ -105,7 +128,13 @@ def update_news(
 
     session.commit()
     session.refresh(db_news)
-    return db_news
+    
+    res = db_news.model_dump()
+    if db_news.reporter:
+        res["reporter_name"] = db_news.reporter.full_name
+    else:
+        res["reporter_name"] = "GoalUp Reporter"
+    return res
 
 
 @router.delete("/{news_id}")

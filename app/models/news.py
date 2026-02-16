@@ -19,6 +19,7 @@ class NewsBase(SQLModel):
     image_url: Optional[str] = None
     team_id: Optional[uuid.UUID] = Field(default=None, foreign_key="team.id",ondelete="CASCADE")
     player_id: Optional[uuid.UUID] = Field(default=None, foreign_key="player.id",ondelete="CASCADE")
+    reporter_id: Optional[int] = Field(default=None, foreign_key="users.id", nullable=True)
     is_published: bool = Field(default=True)
 
 
@@ -29,6 +30,7 @@ class News(NewsBase, table=True):
 
     team: Optional["Team"] = Relationship()
     player: Optional["Player"] = Relationship()
+    reporter: Optional["User"] = Relationship()
 
 
 class NewsCreate(NewsBase):
@@ -39,6 +41,7 @@ class NewsRead(NewsBase):
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    reporter_name: Optional[str] = None
 
 
 class NewsUpdate(SQLModel):
@@ -53,3 +56,4 @@ class NewsUpdate(SQLModel):
 
 from app.models.team import Team
 from app.models.player import Player
+from app.models.user import User
