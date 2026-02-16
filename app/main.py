@@ -25,6 +25,11 @@ def on_startup():
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+# Ensure static directory exists
+import os
+if not os.path.exists("static"):
+    os.makedirs("static")
+
 # Static Files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
