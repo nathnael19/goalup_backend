@@ -4,8 +4,25 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
 from app.core.database import create_db_and_tables
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+import logging
 
-app = FastAPI(title=settings.PROJECT_NAME)
+# Configure logging
+logging.basicConfig(level=logging.INFO if settings.ENVIRONMENT == "production" else logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
+    redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
+)
+
+# Host Header protection
+if settings.ENVIRONMENT == "production":
+    app.add_middleware(
+        TrustedHostMiddleware, 
+        allowed_hosts=["goalupbackend.webcode.codes", "*.webcode.codes"]
+    )
 
 # CORS Middleware
 app.add_middleware(

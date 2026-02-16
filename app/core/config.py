@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # JWT Settings
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200  # 30 days
+    ENVIRONMENT: str = "production" # "development", "production"
 
     class Config:
         import os
