@@ -10,6 +10,7 @@ from app.models.user import User
 from app.core.audit import record_audit_log
 
 from app.core.notification import create_notification
+from app.core.supabase_client import get_signed_url
 
 router = APIRouter()
 
@@ -48,6 +49,7 @@ def create_news(
     # Return as NewsRead compatible dict
     news_read = db_news.model_dump()
     news_read["reporter_name"] = current_user.full_name
+    news_read["image_url"] = get_signed_url(db_news.image_url)
     return news_read
 
 
@@ -79,6 +81,8 @@ def read_news(
             n_dict["reporter_name"] = n.reporter.full_name
         else:
             n_dict["reporter_name"] = "GoalUp Reporter"
+        
+        n_dict["image_url"] = get_signed_url(n.image_url)
         results.append(n_dict)
             
     return results
@@ -97,6 +101,7 @@ def read_news_by_id(*, session: Session = Depends(get_session), news_id: uuid.UU
         
     res = news.model_dump()
     res["reporter_name"] = reporter_name
+    res["image_url"] = get_signed_url(news.image_url)
     return res
 
 
@@ -134,6 +139,8 @@ def update_news(
         res["reporter_name"] = db_news.reporter.full_name
     else:
         res["reporter_name"] = "GoalUp Reporter"
+    
+    res["image_url"] = get_signed_url(db_news.image_url)
     return res
 
 

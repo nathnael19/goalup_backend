@@ -9,6 +9,7 @@ from app.models.tournament import Tournament, TournamentRead
 from app.api.v1.deps import get_current_tournament_admin, get_current_superuser
 from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
+from app.core.supabase_client import get_signed_url
 
 router = APIRouter()
 
@@ -43,6 +44,7 @@ def create_team(
     )
 
     session.commit()
+    session.commit()
     session.refresh(db_team)
 
     # Create initial standing for the team in the tournament (still needed for stats)
@@ -50,7 +52,9 @@ def create_team(
     session.add(standing)
     session.commit()
 
-    return db_team
+    res = db_team.model_dump()
+    res["logo_url"] = get_signed_url(db_team.logo_url)
+    return res
 
     
 class TeamReadWithTournament(TeamRead):
@@ -64,7 +68,11 @@ def read_teams(session: Session = Depends(get_session)):
         tt = TeamReadWithTournament.model_validate(t)
         if t.tournament_id:
             tt.tournament = session.get(Tournament, t.tournament_id)
-        result.append(tt)
+        
+        # Sign URL
+        tt_dict = tt.model_dump()
+        tt_dict["logo_url"] = get_signed_url(t.logo_url)
+        result.append(tt_dict)
     return result
 
 
@@ -103,6 +111,18 @@ def read_team(*, session: Session = Depends(get_session), team_id: uuid.UUID):
     response_data["roster"] = roster_data
     response_data["standings"] = team.standings
     response_data["matches"] = all_matches
+    
+    # Sign logo
+    response_data["logo_url"] = get_signed_url(team.logo_url)
+    
+    # Sign player photos in roster
+    for category in roster_data:
+        signed_players = []
+        for p in roster_data[category]:
+             p_dict = p.model_dump()
+             p_dict["image_url"] = get_signed_url(p.image_url)
+             signed_players.append(p_dict)
+        roster_data[category] = signed_players
     
     return response_data
 
@@ -163,7 +183,9 @@ def update_team(
     session.commit()
     session.refresh(db_team)
     
-    return db_team
+    res = db_team.model_dump()
+    res["logo_url"] = get_signed_url(db_team.logo_url)
+    return res
 
 @router.delete("/{team_id}")
 def delete_team(
