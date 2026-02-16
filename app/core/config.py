@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     SUPABASE_PROJECT_URL: str
     SUPABASE_PUBLISHABLE_KEY: str
+    SUPABASE_SERVICE_ROLE_KEY: str
+    SUPABASE_BUCKET_NAME: str = "uploads"
     SECRET_KEY: str
     
     # JWT Settings
@@ -13,6 +15,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200  # 30 days
 
     class Config:
-        env_file = ".env"
+        import os
+        env_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
 
 settings = Settings()

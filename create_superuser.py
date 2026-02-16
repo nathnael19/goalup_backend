@@ -33,7 +33,7 @@ def create_superuser(email, password):
         # Create new superuser
         new_user = User(
             email=email,
-            full_name="Super Admin",
+            full_name="Nathnael Nigussie",
             hashed_password=get_password_hash(password),
             is_active=True,
             is_superuser=True,
