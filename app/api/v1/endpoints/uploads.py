@@ -1,13 +1,10 @@
 import os
 import uuid
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from supabase import create_client, Client
+from app.core.supabase_client import supabase
 from app.core.config import settings
 
 router = APIRouter()
-
-# Initialize Supabase client
-supabase: Client = create_client(settings.SUPABASE_PROJECT_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
 
 @router.post("")
 async def upload_file(file: UploadFile = File(...)):
@@ -24,18 +21,25 @@ async def upload_file(file: UploadFile = File(...)):
         content = await file.read()
         
         # Upload to Supabase Storage
-        path = f"uploads/{unique_filename}"
-        response = supabase.storage.from_(settings.SUPABASE_BUCKET_NAME).upload(
+        path = unique_filename
+        supabase.storage.from_(settings.SUPABASE_BUCKET_NAME).upload(
             path=path,
             file=content,
             file_options={"content-type": file.content_type}
         )
         
-        # Get public URL
-        # Supabase public URL format: {URL}/storage/v1/object/public/{BUCKET}/{PATH}
-        public_url = f"{settings.SUPABASE_PROJECT_URL}/storage/v1/object/public/{settings.SUPABASE_BUCKET_NAME}/{path}"
+        # Get signed URL for immediate preview (valid for 1 hour)
+        # This allows the admin panel to show the image right after upload
+        signed_url_response = supabase.storage.from_(settings.SUPABASE_BUCKET_NAME).create_signed_url(
+            path=path,
+            expires_in=3600
+        )
         
-        return {"url": public_url}
+        # Return both the signed URL for preview and the raw path to be saved in DB
+        return {
+            "url": signed_url_response["signedURL"],
+            "path": path
+        }
         
     except Exception as e:
         print(f"Supabase upload error: {e}")

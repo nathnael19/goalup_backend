@@ -9,6 +9,7 @@ from app.models.match import Match, MatchStatus
 from app.api.v1.deps import get_current_tournament_admin, get_current_superuser
 from app.models.user import User
 from app.core.audit import record_audit_log
+from app.core.supabase_client import get_signed_url
 
 router = APIRouter()
 
@@ -23,19 +24,31 @@ def create_tournament(
     session.add(db_tournament)
     session.commit()
     session.refresh(db_tournament)
-    return db_tournament
+    
+    return db_tournament.model_dump()
 
 @router.get("/", response_model=List[TournamentRead])
 def read_tournaments(session: Session = Depends(get_session)):
     tournaments = session.exec(select(Tournament)).all()
-    return tournaments
+    return [t.model_dump() for t in tournaments]
 
 @router.get("/{tournament_id}", response_model=TournamentReadWithTeams)
 def read_tournament(*, session: Session = Depends(get_session), tournament_id: uuid.UUID):
     tournament = session.get(Tournament, tournament_id)
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
-    return tournament
+        
+    res = tournament.model_dump()
+    
+    # Also sign team logos in the teams list
+    teams_signed = []
+    for team in tournament.teams:
+        team_dict = team.model_dump()
+        team_dict["logo_url"] = get_signed_url(team.logo_url)
+        teams_signed.append(team_dict)
+    
+    res["teams"] = teams_signed
+    return res
 
 @router.put("/{tournament_id}", response_model=TournamentRead)
 def update_tournament(
@@ -54,7 +67,8 @@ def update_tournament(
     session.add(db_tournament)
     session.commit()
     session.refresh(db_tournament)
-    return db_tournament
+    
+    return db_tournament.model_dump()
 
 @router.delete("/{tournament_id}")
 def delete_tournament(

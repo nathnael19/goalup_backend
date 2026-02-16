@@ -8,6 +8,7 @@ from app.models.team import Team
 from app.api.v1.deps import get_current_tournament_admin, get_current_superuser, get_current_active_user
 from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
+from app.core.supabase_client import get_signed_url
 
 router = APIRouter()
 
@@ -60,19 +61,30 @@ def create_player(
 
     session.commit()
     session.refresh(db_player)
-    return db_player
+    
+    res = db_player.model_dump()
+    res["image_url"] = get_signed_url(db_player.image_url)
+    return res
 
 @router.get("/", response_model=List[PlayerRead])
 def read_players(session: Session = Depends(get_session)):
     players = session.exec(select(Player)).all()
-    return players
+    results = []
+    for p in players:
+        p_dict = p.model_dump()
+        p_dict["image_url"] = get_signed_url(p.image_url)
+        results.append(p_dict)
+    return results
 
 @router.get("/{player_id}", response_model=PlayerRead)
 def read_player(*, session: Session = Depends(get_session), player_id: uuid.UUID):
     player = session.get(Player, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="Player not found")
-    return player
+    
+    res = player.model_dump()
+    res["image_url"] = get_signed_url(player.image_url)
+    return res
 
 @router.put("/{player_id}", response_model=PlayerRead)
 def update_player(
@@ -139,7 +151,10 @@ def update_player(
 
     session.commit()
     session.refresh(db_player)
-    return db_player
+    
+    res = db_player.model_dump()
+    res["image_url"] = get_signed_url(db_player.image_url)
+    return res
 
 @router.delete("/{player_id}")
 def delete_player(

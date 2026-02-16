@@ -9,7 +9,6 @@ class TournamentBase(SQLModel):
     name: str
     year: int
     type: str = Field(default="league") # "league", "knockout", "group_knockout"
-    image_url: Optional[str] = None
     competition_id: Optional[uuid.UUID] = Field(default=None, foreign_key="competition.id")
     knockout_legs: int = Field(default=1) # 1 or 2
     has_third_place_match: bool = Field(default=False)
@@ -42,7 +41,6 @@ class TournamentUpdate(SQLModel):
     name: Optional[str] = None
     year: Optional[int] = None
     type: Optional[str] = None
-    image_url: Optional[str] = None
 
 class TournamentRead(TournamentBase):
     id: uuid.UUID
