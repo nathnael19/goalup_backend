@@ -2,6 +2,7 @@ import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select, func, SQLModel
+from sqlalchemy.orm import selectinload
 from app.core.database import get_session
 from app.models.standing import Standing, StandingRead
 from app.models.match import Match, MatchStatus
@@ -24,23 +25,26 @@ class GroupedTournamentStandings(SQLModel):
 
 @router.get("/", response_model=List[GroupedTournamentStandings])
 def read_standings(year: Optional[int] = None, session: Session = Depends(get_session)):
-    query = select(Tournament)
+    query = select(Tournament).options(
+        selectinload(Tournament.competition),
+        selectinload(Tournament.standings).selectinload(Standing.team),
+    )
     if year:
         query = query.where(Tournament.year == year)
     tournaments = session.exec(query).all()
     result = []
     
     for t in tournaments:
-        standings = session.exec(
-            select(Standing)
-            .where(Standing.tournament_id == t.id)
-            .order_by(Standing.points.desc(), (Standing.goals_for - Standing.goals_against).desc())
-        ).all()
+        # Sort standings in Python (already loaded)
+        sorted_standings = sorted(
+            t.standings,
+            key=lambda s: (-s.points, -(s.goals_for - s.goals_against))
+        )
         
         team_standings = []
-        for s in standings:
+        for s in sorted_standings:
             ts = TeamStandingRead.model_validate(s)
-            ts.team = session.get(Team, s.team_id)
+            ts.team = s.team  # Already loaded via selectinload
             team_standings.append(ts)
             
         result.append(GroupedTournamentStandings(
@@ -52,20 +56,23 @@ def read_standings(year: Optional[int] = None, session: Session = Depends(get_se
 
 @router.get("/{tournament_id}", response_model=GroupedTournamentStandings)
 def get_tournament_standings(*, session: Session = Depends(get_session), tournament_id: uuid.UUID):
-    tournament = session.get(Tournament, tournament_id)
+    query = select(Tournament).where(Tournament.id == tournament_id).options(
+        selectinload(Tournament.competition),
+        selectinload(Tournament.standings).selectinload(Standing.team),
+    )
+    tournament = session.exec(query).first()
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
     
-    standings = session.exec(
-        select(Standing)
-        .where(Standing.tournament_id == tournament_id)
-        .order_by(Standing.points.desc(), (Standing.goals_for - Standing.goals_against).desc())
-    ).all()
+    sorted_standings = sorted(
+        tournament.standings,
+        key=lambda s: (-s.points, -(s.goals_for - s.goals_against))
+    )
     
     team_standings = []
-    for s in standings:
+    for s in sorted_standings:
         ts = TeamStandingRead.model_validate(s)
-        ts.team = session.get(Team, s.team_id)
+        ts.team = s.team
         team_standings.append(ts)
         
     return GroupedTournamentStandings(

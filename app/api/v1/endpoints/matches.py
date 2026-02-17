@@ -2,6 +2,7 @@ import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
+from sqlalchemy.orm import selectinload
 from app.core.database import get_session
 from app.models.match import Match, MatchCreate, MatchRead, MatchUpdate
 from app.models.team import Team, TeamRead
@@ -76,7 +77,17 @@ def read_matches(
     tournament_id: Optional[uuid.UUID] = None
 ):
     try:
-        query = select(Match)
+        query = select(Match).options(
+            selectinload(Match.tournament).selectinload(Tournament.competition),
+            selectinload(Match.team_a),
+            selectinload(Match.team_b),
+            selectinload(Match.lineups).selectinload(Lineup.player),
+            selectinload(Match.goals_list).selectinload(Goal.player),
+            selectinload(Match.goals_list).selectinload(Goal.assistant),
+            selectinload(Match.cards_list).selectinload(Card.player),
+            selectinload(Match.substitutions).selectinload(Substitution.player_in),
+            selectinload(Match.substitutions).selectinload(Substitution.player_out),
+        )
         if tournament_id:
             query = query.where(Match.tournament_id == tournament_id)
             
@@ -85,31 +96,21 @@ def read_matches(
         for m in matches:
             em = EnrichedMatchRead.model_validate(m)
             
-            # Tournament info
-            tournament = session.get(Tournament, m.tournament_id)
-            if tournament:
-                tournament_dict = TournamentReadWithCompetition.model_validate(tournament).model_dump()
-                if tournament.competition_id:
-                    competition = session.get(Competition, tournament.competition_id)
-                    if competition:
-                        tournament_dict['competition'] = CompetitionRead.model_validate(competition).model_dump()
+            # Tournament info (already loaded)
+            if m.tournament:
+                tournament_dict = TournamentReadWithCompetition.model_validate(m.tournament).model_dump()
+                if m.tournament.competition:
+                    tournament_dict['competition'] = CompetitionRead.model_validate(m.tournament.competition).model_dump()
                 em.tournament = TournamentReadWithCompetition(**tournament_dict)
             
-            em.team_a = session.get(Team, m.team_a_id)
-            em.team_b = session.get(Team, m.team_b_id)
+            em.team_a = m.team_a
+            em.team_b = m.team_b
             
-            # Fetch detailed lists and explicitly validate them
-            raw_lineups = session.exec(select(Lineup).where(Lineup.match_id == m.id)).all()
-            em.lineups = [LineupReadWithPlayer.model_validate(l) for l in raw_lineups]
-            
-            raw_goals = session.exec(select(Goal).where(Goal.match_id == m.id)).all()
-            em.goals = [GoalReadWithPlayer.model_validate(g) for g in raw_goals]
-            
-            raw_cards = session.exec(select(Card).where(Card.match_id == m.id)).all()
-            em.cards = [CardReadWithPlayer.model_validate(c) for c in raw_cards]
-            
-            raw_subs = session.exec(select(Substitution).where(Substitution.match_id == m.id)).all()
-            em.substitutions = [SubstitutionReadWithPlayers.model_validate(s) for s in raw_subs]
+            # Use pre-loaded relationships
+            em.lineups = [LineupReadWithPlayer.model_validate(l) for l in m.lineups]
+            em.goals = [GoalReadWithPlayer.model_validate(g) for g in m.goals_list]
+            em.cards = [CardReadWithPlayer.model_validate(c) for c in m.cards_list]
+            em.substitutions = [SubstitutionReadWithPlayers.model_validate(s) for s in m.substitutions]
             
             result.append(em)
         return result
@@ -122,34 +123,34 @@ def read_matches(
 @router.get("/{match_id}", response_model=EnrichedMatchRead)
 def read_match(*, session: Session = Depends(get_session), match_id: uuid.UUID):
     try:
-        match = session.get(Match, match_id)
+        query = select(Match).where(Match.id == match_id).options(
+            selectinload(Match.tournament).selectinload(Tournament.competition),
+            selectinload(Match.team_a),
+            selectinload(Match.team_b),
+            selectinload(Match.lineups).selectinload(Lineup.player),
+            selectinload(Match.goals_list).selectinload(Goal.player),
+            selectinload(Match.goals_list).selectinload(Goal.assistant),
+            selectinload(Match.cards_list).selectinload(Card.player),
+            selectinload(Match.substitutions).selectinload(Substitution.player_in),
+            selectinload(Match.substitutions).selectinload(Substitution.player_out),
+        )
+        match = session.exec(query).first()
         if not match:
             raise HTTPException(status_code=404, detail="Match not found")
         
         em = EnrichedMatchRead.model_validate(match)
-        tournament = session.get(Tournament, match.tournament_id)
-        if tournament:
-            tournament_dict = TournamentReadWithCompetition.model_validate(tournament).model_dump()
-            if tournament.competition_id:
-                competition = session.get(Competition, tournament.competition_id)
-                if competition:
-                    tournament_dict['competition'] = CompetitionRead.model_validate(competition).model_dump()
+        if match.tournament:
+            tournament_dict = TournamentReadWithCompetition.model_validate(match.tournament).model_dump()
+            if match.tournament.competition:
+                tournament_dict['competition'] = CompetitionRead.model_validate(match.tournament.competition).model_dump()
             em.tournament = TournamentReadWithCompetition(**tournament_dict)
-        em.team_a = session.get(Team, match.team_a_id)
-        em.team_b = session.get(Team, match.team_b_id)
+        em.team_a = match.team_a
+        em.team_b = match.team_b
         
-        # Explicit validation
-        raw_lineups = session.exec(select(Lineup).where(Lineup.match_id == match_id)).all()
-        em.lineups = [LineupReadWithPlayer.model_validate(l) for l in raw_lineups]
-        
-        raw_goals = session.exec(select(Goal).where(Goal.match_id == match_id)).all()
-        em.goals = [GoalReadWithPlayer.model_validate(g) for g in raw_goals]
-        
-        raw_cards = session.exec(select(Card).where(Card.match_id == match_id)).all()
-        em.cards = [CardReadWithPlayer.model_validate(c) for c in raw_cards]
-        
-        raw_subs = session.exec(select(Substitution).where(Substitution.match_id == match_id)).all()
-        em.substitutions = [SubstitutionReadWithPlayers.model_validate(s) for s in raw_subs]
+        em.lineups = [LineupReadWithPlayer.model_validate(l) for l in match.lineups]
+        em.goals = [GoalReadWithPlayer.model_validate(g) for g in match.goals_list]
+        em.cards = [CardReadWithPlayer.model_validate(c) for c in match.cards_list]
+        em.substitutions = [SubstitutionReadWithPlayers.model_validate(s) for s in match.substitutions]
         
         return em
     except HTTPException:

@@ -2,6 +2,7 @@ import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
+from sqlalchemy.orm import selectinload
 from datetime import datetime
 from app.core.database import get_session
 from app.models.news import News, NewsCreate, NewsRead, NewsUpdate, NewsCategory
@@ -10,7 +11,7 @@ from app.models.user import User
 from app.core.audit import record_audit_log
 
 from app.core.notification import create_notification
-from app.core.supabase_client import get_signed_url
+from app.core.supabase_client import get_signed_url, get_signed_urls_batch
 
 router = APIRouter()
 
@@ -63,7 +64,9 @@ def read_news(
     offset: int = 0,
     limit: int = 100,
 ):
-    query = select(News).order_by(News.created_at.desc())
+    query = select(News).options(
+        selectinload(News.reporter),
+    ).order_by(News.created_at.desc())
     if category:
         query = query.where(News.category == category)
     if team_id:
@@ -74,6 +77,10 @@ def read_news(
     query = query.offset(offset).limit(limit)
     news_list = session.exec(query).all()
     
+    # Batch sign image URLs
+    image_paths = [n.image_url for n in news_list if n.image_url]
+    signed_urls = get_signed_urls_batch(image_paths) if image_paths else {}
+    
     results = []
     for n in news_list:
         n_dict = n.model_dump()
@@ -82,7 +89,7 @@ def read_news(
         else:
             n_dict["reporter_name"] = "GoalUp Reporter"
         
-        n_dict["image_url"] = get_signed_url(n.image_url)
+        n_dict["image_url"] = signed_urls.get(n.image_url, "") if n.image_url else ""
         results.append(n_dict)
             
     return results

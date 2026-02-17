@@ -2,6 +2,7 @@ import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
+from sqlalchemy.orm import selectinload
 from app.core.database import get_session
 from app.models.team import Team, TeamCreate, TeamRead, TeamUpdate, TeamReadWithTournaments, TeamReadDetail
 from app.models.standing import Standing
@@ -9,7 +10,7 @@ from app.models.tournament import Tournament, TournamentRead
 from app.api.v1.deps import get_current_tournament_admin, get_current_superuser
 from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
-from app.core.supabase_client import get_signed_url
+from app.core.supabase_client import get_signed_url, get_signed_urls_batch
 
 router = APIRouter()
 
@@ -63,15 +64,26 @@ class TeamReadWithTournament(TeamRead):
 @router.get("/", response_model=List[TeamReadWithTournament])
 def read_teams(session: Session = Depends(get_session)):
     teams = session.exec(select(Team)).all()
+    
+    # Pre-load all needed tournaments in one query
+    tournament_ids = {t.tournament_id for t in teams if t.tournament_id}
+    tournaments_map = {}
+    if tournament_ids:
+        tournaments = session.exec(select(Tournament).where(Tournament.id.in_(tournament_ids))).all()
+        tournaments_map = {t.id: t for t in tournaments}
+    
+    # Batch sign all logo URLs
+    logo_paths = [t.logo_url for t in teams if t.logo_url]
+    signed_urls = get_signed_urls_batch(logo_paths) if logo_paths else {}
+    
     result = []
     for t in teams:
         tt = TeamReadWithTournament.model_validate(t)
-        if t.tournament_id:
-            tt.tournament = session.get(Tournament, t.tournament_id)
+        if t.tournament_id and t.tournament_id in tournaments_map:
+            tt.tournament = tournaments_map[t.tournament_id]
         
-        # Sign URL
         tt_dict = tt.model_dump()
-        tt_dict["logo_url"] = get_signed_url(t.logo_url)
+        tt_dict["logo_url"] = signed_urls.get(t.logo_url, "") if t.logo_url else ""
         result.append(tt_dict)
     return result
 
