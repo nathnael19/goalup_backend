@@ -75,15 +75,59 @@ def read_matches(
     limit: int = 100,
     tournament_id: Optional[uuid.UUID] = None
 ):
-    query = select(Match)
-    if tournament_id:
-        query = query.where(Match.tournament_id == tournament_id)
+    try:
+        query = select(Match)
+        if tournament_id:
+            query = query.where(Match.tournament_id == tournament_id)
+            
+        matches = session.exec(query.offset(offset).limit(limit)).all()
+        result = []
+        for m in matches:
+            em = EnrichedMatchRead.model_validate(m)
+            
+            # Tournament info
+            tournament = session.get(Tournament, m.tournament_id)
+            if tournament:
+                tournament_dict = TournamentReadWithCompetition.model_validate(tournament).model_dump()
+                if tournament.competition_id:
+                    competition = session.get(Competition, tournament.competition_id)
+                    if competition:
+                        tournament_dict['competition'] = CompetitionRead.model_validate(competition).model_dump()
+                em.tournament = TournamentReadWithCompetition(**tournament_dict)
+            
+            em.team_a = session.get(Team, m.team_a_id)
+            em.team_b = session.get(Team, m.team_b_id)
+            
+            # Fetch detailed lists and explicitly validate them
+            raw_lineups = session.exec(select(Lineup).where(Lineup.match_id == m.id)).all()
+            em.lineups = [LineupReadWithPlayer.model_validate(l) for l in raw_lineups]
+            
+            raw_goals = session.exec(select(Goal).where(Goal.match_id == m.id)).all()
+            em.goals = [GoalReadWithPlayer.model_validate(g) for g in raw_goals]
+            
+            raw_cards = session.exec(select(Card).where(Card.match_id == m.id)).all()
+            em.cards = [CardReadWithPlayer.model_validate(c) for c in raw_cards]
+            
+            raw_subs = session.exec(select(Substitution).where(Substitution.match_id == m.id)).all()
+            em.substitutions = [SubstitutionReadWithPlayers.model_validate(s) for s in raw_subs]
+            
+            result.append(em)
+        return result
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"ERROR in read_matches: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+@router.get("/{match_id}", response_model=EnrichedMatchRead)
+def read_match(*, session: Session = Depends(get_session), match_id: uuid.UUID):
+    try:
+        match = session.get(Match, match_id)
+        if not match:
+            raise HTTPException(status_code=404, detail="Match not found")
         
-    matches = session.exec(query.offset(offset).limit(limit)).all()
-    result = []
-    for m in matches:
-        em = EnrichedMatchRead.model_validate(m)
-        tournament = session.get(Tournament, m.tournament_id)
+        em = EnrichedMatchRead.model_validate(match)
+        tournament = session.get(Tournament, match.tournament_id)
         if tournament:
             tournament_dict = TournamentReadWithCompetition.model_validate(tournament).model_dump()
             if tournament.competition_id:
@@ -91,40 +135,30 @@ def read_matches(
                 if competition:
                     tournament_dict['competition'] = CompetitionRead.model_validate(competition).model_dump()
             em.tournament = TournamentReadWithCompetition(**tournament_dict)
-        em.team_a = session.get(Team, m.team_a_id)
-        em.team_b = session.get(Team, m.team_b_id)
-        # Fetch detailed lists
-        em.lineups = session.exec(select(Lineup).where(Lineup.match_id == m.id)).all()
-        em.goals = session.exec(select(Goal).where(Goal.match_id == m.id)).all()
-        em.cards = session.exec(select(Card).where(Card.match_id == m.id)).all()
-        em.substitutions = session.exec(select(Substitution).where(Substitution.match_id == m.id)).all()
-        result.append(em)
-    return result
-
-@router.get("/{match_id}", response_model=EnrichedMatchRead)
-def read_match(*, session: Session = Depends(get_session), match_id: uuid.UUID):
-    match = session.get(Match, match_id)
-    if not match:
-        raise HTTPException(status_code=404, detail="Match not found")
-    
-    em = EnrichedMatchRead.model_validate(match)
-    tournament = session.get(Tournament, match.tournament_id)
-    if tournament:
-        tournament_dict = TournamentReadWithCompetition.model_validate(tournament).model_dump()
-        if tournament.competition_id:
-            competition = session.get(Competition, tournament.competition_id)
-            if competition:
-                tournament_dict['competition'] = CompetitionRead.model_validate(competition).model_dump()
-        em.tournament = TournamentReadWithCompetition(**tournament_dict)
-    em.team_a = session.get(Team, match.team_a_id)
-    em.team_b = session.get(Team, match.team_b_id)
-    
-    em.lineups = session.exec(select(Lineup).where(Lineup.match_id == match_id)).all()
-    em.goals = session.exec(select(Goal).where(Goal.match_id == match_id)).all()
-    em.cards = session.exec(select(Card).where(Card.match_id == match_id)).all()
-    em.substitutions = session.exec(select(Substitution).where(Substitution.match_id == match_id)).all()
-    
-    return em
+        em.team_a = session.get(Team, match.team_a_id)
+        em.team_b = session.get(Team, match.team_b_id)
+        
+        # Explicit validation
+        raw_lineups = session.exec(select(Lineup).where(Lineup.match_id == match_id)).all()
+        em.lineups = [LineupReadWithPlayer.model_validate(l) for l in raw_lineups]
+        
+        raw_goals = session.exec(select(Goal).where(Goal.match_id == match_id)).all()
+        em.goals = [GoalReadWithPlayer.model_validate(g) for g in raw_goals]
+        
+        raw_cards = session.exec(select(Card).where(Card.match_id == match_id)).all()
+        em.cards = [CardReadWithPlayer.model_validate(c) for c in raw_cards]
+        
+        raw_subs = session.exec(select(Substitution).where(Substitution.match_id == match_id)).all()
+        em.substitutions = [SubstitutionReadWithPlayers.model_validate(s) for s in raw_subs]
+        
+        return em
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"ERROR in read_match({match_id}): {e}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @router.put("/{match_id}", response_model=MatchRead)
 def update_match(
