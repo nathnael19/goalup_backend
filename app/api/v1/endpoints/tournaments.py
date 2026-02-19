@@ -40,6 +40,12 @@ def read_tournament(*, session: Session = Depends(get_session), tournament_id: u
         
     res = tournament.model_dump()
     
+    # Include competition data with signed image URL
+    if tournament.competition:
+        comp_dict = tournament.competition.model_dump()
+        comp_dict["image_url"] = get_signed_url(tournament.competition.image_url)
+        res["competition"] = comp_dict
+    
     # Also sign team logos in the teams list
     teams_signed = []
     for team in tournament.teams:

@@ -46,8 +46,12 @@ class TournamentRead(TournamentBase):
     id: uuid.UUID
 
 from app.models.team import Team
+from app.models.competition import CompetitionRead
 
-class TournamentReadWithTeams(TournamentRead):
+class TournamentReadWithCompetition(TournamentRead):
+    competition: Optional[CompetitionRead] = None
+
+class TournamentReadWithTeams(TournamentReadWithCompetition):
     teams: List[Team] = []
 
 
