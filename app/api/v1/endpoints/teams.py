@@ -6,28 +6,43 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_session
 from app.models.team import Team, TeamCreate, TeamRead, TeamUpdate, TeamReadWithTournaments, TeamReadDetail
 from app.models.standing import Standing
-from app.models.tournament import Tournament, TournamentRead
+from app.models.tournament import Tournament, TournamentRead, TournamentReadWithCompetition
 from app.api.v1.deps import get_current_tournament_admin, get_current_superuser, get_current_active_user
 from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
 from app.core.supabase_client import get_signed_url, get_signed_urls_batch
 
+from app.models.competition import Competition
+
 router = APIRouter()
 
-@router.post("/", response_model=TeamRead)
+class TeamReadCreateResponse(TeamRead):
+    tournament: Optional[TournamentReadWithCompetition] = None
+
+@router.post("/", response_model=TeamReadCreateResponse)
 def create_team(
     *, 
     session: Session = Depends(get_session), 
     team: TeamCreate,
     current_user: User = Depends(get_current_tournament_admin)
 ):
-    # RBAC Check: Tournament Admins can only create teams for THEIR tournament
+    # Auto-populate tournament_id for Tournament Admins
     if current_user.role == UserRole.TOURNAMENT_ADMIN:
-        if current_user.tournament_id != team.tournament_id:
+        if not team.tournament_id:
+            team.tournament_id = current_user.tournament_id
+        elif current_user.tournament_id != team.tournament_id:
             raise HTTPException(status_code=403, detail="Tournament Admins can only create teams for their assigned tournament")
+    
+    if not team.tournament_id:
+        raise HTTPException(status_code=400, detail="Tournament ID is required")
 
-    # Verify tournament exists
-    tournament = session.get(Tournament, team.tournament_id)
+    # Verify tournament exists and fetch it with competition for the response
+    tournament = session.exec(
+        select(Tournament)
+        .where(Tournament.id == team.tournament_id)
+        .options(selectinload(Tournament.competition))
+    ).first()
+    
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
 
@@ -45,7 +60,6 @@ def create_team(
     )
 
     session.commit()
-    session.commit()
     session.refresh(db_team)
 
     # Create initial standing for the team in the tournament (still needed for stats)
@@ -53,8 +67,11 @@ def create_team(
     session.add(standing)
     session.commit()
 
+    # Pre-loading for response
+    # We already have tournament from above
     res = db_team.model_dump()
     res["logo_url"] = get_signed_url(db_team.logo_url)
+    res["tournament"] = tournament
     return res
 
     

@@ -22,7 +22,7 @@ class Team(TeamBase, table=True):
     substitutions: List["Substitution"] = Relationship(back_populates="team")
 
 class TeamCreate(TeamBase):
-    tournament_id: uuid.UUID
+    tournament_id: Optional[uuid.UUID] = None
 
 class TeamUpdate(SQLModel):
     name: Optional[str] = None
