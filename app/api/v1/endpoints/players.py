@@ -67,8 +67,20 @@ def create_player(
     return res
 
 @router.get("/", response_model=List[PlayerRead])
-def read_players(session: Session = Depends(get_session)):
-    players = session.exec(select(Player)).all()
+def read_players(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    query = select(Player)
+    
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        # Complex join required: Player -> Team -> Tournament
+        if current_user.tournament_id:
+            query = query.join(Team).where(Team.tournament_id == current_user.tournament_id)
+        elif current_user.competition_id:
+            query = query.join(Team).join(Tournament).where(Tournament.competition_id == current_user.competition_id)
+            
+    players = session.exec(query).all()
     results = []
     for p in players:
         p_dict = p.model_dump()
@@ -77,10 +89,26 @@ def read_players(session: Session = Depends(get_session)):
     return results
 
 @router.get("/{player_id}", response_model=PlayerRead)
-def read_player(*, session: Session = Depends(get_session), player_id: uuid.UUID):
+def read_player(
+    *, 
+    session: Session = Depends(get_session), 
+    player_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_user)
+):
     player = session.get(Player, player_id)
     if not player:
         raise HTTPException(status_code=404, detail="Player not found")
+    
+    # RBAC Check
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        team = session.get(Team, player.team_id)
+        if team:
+            if current_user.tournament_id and team.tournament_id != current_user.tournament_id:
+                raise HTTPException(status_code=403, detail="Not authorized to access this player")
+            if current_user.competition_id:
+                tournament = session.get(Tournament, team.tournament_id)
+                if tournament and tournament.competition_id != current_user.competition_id:
+                    raise HTTPException(status_code=403, detail="Not authorized to access this player")
     
     res = player.model_dump()
     res["image_url"] = get_signed_url(player.image_url)

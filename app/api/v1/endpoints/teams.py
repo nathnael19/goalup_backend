@@ -7,7 +7,7 @@ from app.core.database import get_session
 from app.models.team import Team, TeamCreate, TeamRead, TeamUpdate, TeamReadWithTournaments, TeamReadDetail
 from app.models.standing import Standing
 from app.models.tournament import Tournament, TournamentRead
-from app.api.v1.deps import get_current_tournament_admin, get_current_superuser
+from app.api.v1.deps import get_current_tournament_admin, get_current_superuser, get_current_active_user
 from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
 from app.core.supabase_client import get_signed_url, get_signed_urls_batch
@@ -62,8 +62,19 @@ class TeamReadWithTournament(TeamRead):
     tournament: Optional[TournamentRead] = None
     
 @router.get("/", response_model=List[TeamReadWithTournament])
-def read_teams(session: Session = Depends(get_session)):
-    teams = session.exec(select(Team)).all()
+def read_teams(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
+    query = select(Team)
+    
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if current_user.tournament_id:
+            query = query.where(Team.tournament_id == current_user.tournament_id)
+        elif current_user.competition_id:
+            query = query.join(Tournament).where(Tournament.competition_id == current_user.competition_id)
+            
+    teams = session.exec(query).all()
     
     # Pre-load all needed tournaments in one query
     tournament_ids = {t.tournament_id for t in teams if t.tournament_id}
@@ -89,10 +100,25 @@ def read_teams(session: Session = Depends(get_session)):
 
 
 @router.get("/{team_id}", response_model=TeamReadDetail)
-def read_team(*, session: Session = Depends(get_session), team_id: uuid.UUID):
+def read_team(
+    *, 
+    session: Session = Depends(get_session), 
+    team_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_user)
+):
     team = session.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
+    
+    # RBAC Check
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if current_user.tournament_id and team.tournament_id != current_user.tournament_id:
+             raise HTTPException(status_code=403, detail="Not authorized to access this team")
+        if current_user.competition_id:
+            # Check if team's tournament belongs to the competition
+            tournament = session.get(Tournament, team.tournament_id)
+            if tournament and tournament.competition_id != current_user.competition_id:
+                raise HTTPException(status_code=403, detail="Not authorized to access this team")
     
     # Combine home and away matches
     all_matches = team.home_matches + team.away_matches
@@ -209,6 +235,11 @@ def delete_team(
     db_team = session.get(Team, team_id)
     if not db_team:
         raise HTTPException(status_code=404, detail="Team not found")
+
+    # RBAC Check: Only Super Admins can delete teams
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        raise HTTPException(status_code=403, detail="Tournament Admins cannot delete teams")
+
     # Audit Log
     record_audit_log(
         session,

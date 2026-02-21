@@ -8,6 +8,8 @@ from app.models.standing import Standing, StandingRead
 from app.models.match import Match, MatchStatus
 from app.models.team import Team, TeamRead
 from app.models.tournament import Tournament, TournamentRead
+from app.models.user import User, UserRole
+from app.api.v1.deps import get_current_active_user
 
 router = APIRouter()
 
@@ -24,11 +26,22 @@ class GroupedTournamentStandings(SQLModel):
     teams: List[TeamStandingRead]
 
 @router.get("/", response_model=List[GroupedTournamentStandings])
-def read_standings(year: Optional[int] = None, session: Session = Depends(get_session)):
+def read_standings(
+    year: Optional[int] = None, 
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user)
+):
     query = select(Tournament).options(
         selectinload(Tournament.competition),
         selectinload(Tournament.standings).selectinload(Standing.team),
     )
+    
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if current_user.tournament_id:
+            query = query.where(Tournament.id == current_user.tournament_id)
+        elif current_user.competition_id:
+            query = query.where(Tournament.competition_id == current_user.competition_id)
+            
     if year:
         query = query.where(Tournament.year == year)
     tournaments = session.exec(query).all()
@@ -55,7 +68,17 @@ def read_standings(year: Optional[int] = None, session: Session = Depends(get_se
     return result
 
 @router.get("/{tournament_id}", response_model=GroupedTournamentStandings)
-def get_tournament_standings(*, session: Session = Depends(get_session), tournament_id: uuid.UUID):
+def get_tournament_standings(
+    *, 
+    session: Session = Depends(get_session), 
+    tournament_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_user)
+):
+    # RBAC Check
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if current_user.tournament_id and current_user.tournament_id != tournament_id:
+            raise HTTPException(status_code=403, detail="Not authorized to access these standings")
+            
     query = select(Tournament).where(Tournament.id == tournament_id).options(
         selectinload(Tournament.competition),
         selectinload(Tournament.standings).selectinload(Standing.team),
@@ -63,6 +86,10 @@ def get_tournament_standings(*, session: Session = Depends(get_session), tournam
     tournament = session.exec(query).first()
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
+        
+    if current_user.role == UserRole.TOURNAMENT_ADMIN and current_user.competition_id:
+        if tournament.competition_id != current_user.competition_id:
+            raise HTTPException(status_code=403, detail="Not authorized to access these standings")
     
     sorted_standings = sorted(
         tournament.standings,
@@ -81,10 +108,22 @@ def get_tournament_standings(*, session: Session = Depends(get_session), tournam
     )
 
 @router.post("/{tournament_id}/recalculate")
-def recalculate_standings(*, session: Session = Depends(get_session), tournament_id: uuid.UUID):
+def recalculate_standings(
+    *, 
+    session: Session = Depends(get_session), 
+    tournament_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_user)
+):
     tournament = session.get(Tournament, tournament_id)
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
+        
+    # RBAC Check
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if current_user.tournament_id and current_user.tournament_id != tournament_id:
+             raise HTTPException(status_code=403, detail="Not authorized to recalculate these standings")
+        if current_user.competition_id and tournament.competition_id != current_user.competition_id:
+             raise HTTPException(status_code=403, detail="Not authorized to recalculate these standings")
     
     # Get all teams in this tournament
     teams = tournament.teams

@@ -6,7 +6,7 @@ from app.core.database import get_session
 from app.models.competition import Competition, CompetitionCreate, CompetitionRead, CompetitionUpdate
 from app.core.supabase_client import get_signed_url
 from app.api.v1.deps import get_current_management_admin
-from app.models.user import User
+from app.models.user import User, UserRole
 
 router = APIRouter()
 
@@ -27,8 +27,16 @@ def create_competition(
     return res
 
 @router.get("/", response_model=List[CompetitionRead])
-def read_competitions(*, session: Session = Depends(get_session)):
-    competitions = session.exec(select(Competition)).all()
+def read_competitions(
+    *, 
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_management_admin)
+):
+    if current_user.role == UserRole.TOURNAMENT_ADMIN and current_user.competition_id:
+        competitions = session.exec(select(Competition).where(Competition.id == current_user.competition_id)).all()
+    else:
+        competitions = session.exec(select(Competition)).all()
+        
     results = []
     for c in competitions:
         c_dict = c.model_dump()
@@ -37,7 +45,15 @@ def read_competitions(*, session: Session = Depends(get_session)):
     return results
 
 @router.get("/{competition_id}", response_model=CompetitionRead)
-def read_competition(*, session: Session = Depends(get_session), competition_id: uuid.UUID):
+def read_competition(
+    *, 
+    session: Session = Depends(get_session), 
+    competition_id: uuid.UUID,
+    current_user: User = Depends(get_current_management_admin)
+):
+    if current_user.role == UserRole.TOURNAMENT_ADMIN and current_user.competition_id != competition_id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this competition")
+        
     competition = session.get(Competition, competition_id)
     if not competition:
         raise HTTPException(status_code=404, detail="Competition not found")
@@ -54,6 +70,9 @@ def update_competition(
     competition: CompetitionUpdate,
     current_user: User = Depends(get_current_management_admin)
 ):
+    if current_user.role == UserRole.TOURNAMENT_ADMIN and current_user.competition_id != competition_id:
+        raise HTTPException(status_code=403, detail="Not authorized to update this competition")
+        
     db_competition = session.get(Competition, competition_id)
     if not db_competition:
         raise HTTPException(status_code=404, detail="Competition not found")
@@ -75,6 +94,9 @@ def delete_competition(
     competition_id: uuid.UUID,
     current_user: User = Depends(get_current_management_admin)
 ):
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+         raise HTTPException(status_code=403, detail="Tournament Admins cannot delete competitions")
+         
     competition = session.get(Competition, competition_id)
     if not competition:
         raise HTTPException(status_code=404, detail="Competition not found")

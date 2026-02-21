@@ -74,7 +74,8 @@ def read_matches(
     session: Session = Depends(get_session), 
     offset: int = 0, 
     limit: int = 100,
-    tournament_id: Optional[uuid.UUID] = None
+    tournament_id: Optional[uuid.UUID] = None,
+    current_user: User = Depends(get_current_active_user)
 ):
     try:
         query = select(Match).options(
@@ -88,6 +89,13 @@ def read_matches(
             selectinload(Match.substitutions).selectinload(Substitution.player_in),
             selectinload(Match.substitutions).selectinload(Substitution.player_out),
         )
+
+        if current_user.role == UserRole.TOURNAMENT_ADMIN:
+            if current_user.tournament_id:
+                query = query.where(Match.tournament_id == current_user.tournament_id)
+            elif current_user.competition_id:
+                query = query.join(Tournament).where(Tournament.competition_id == current_user.competition_id)
+
         if tournament_id:
             query = query.where(Match.tournament_id == tournament_id)
             
@@ -121,7 +129,12 @@ def read_matches(
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @router.get("/{match_id}", response_model=EnrichedMatchRead)
-def read_match(*, session: Session = Depends(get_session), match_id: uuid.UUID):
+def read_match(
+    *, 
+    session: Session = Depends(get_session), 
+    match_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_user)
+):
     try:
         query = select(Match).where(Match.id == match_id).options(
             selectinload(Match.tournament).selectinload(Tournament.competition),
@@ -137,6 +150,13 @@ def read_match(*, session: Session = Depends(get_session), match_id: uuid.UUID):
         match = session.exec(query).first()
         if not match:
             raise HTTPException(status_code=404, detail="Match not found")
+        
+        # RBAC Check
+        if current_user.role == UserRole.TOURNAMENT_ADMIN:
+            if current_user.tournament_id and match.tournament_id != current_user.tournament_id:
+                raise HTTPException(status_code=403, detail="Not authorized to access this match")
+            if current_user.competition_id and match.tournament.competition_id != current_user.competition_id:
+                raise HTTPException(status_code=403, detail="Not authorized to access this match")
         
         em = EnrichedMatchRead.model_validate(match)
         if match.tournament:
@@ -248,6 +268,10 @@ def delete_match(
     match = session.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
+
+    # RBAC Check: Only Super Admins can delete matches
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        raise HTTPException(status_code=403, detail="Tournament Admins cannot delete matches")
     
     # Audit Log
     record_audit_log(

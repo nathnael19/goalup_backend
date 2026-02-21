@@ -7,7 +7,7 @@ from app.core.database import get_session
 from app.models.tournament import Tournament, TournamentCreate, TournamentRead, TournamentUpdate, TournamentReadWithTeams, TournamentScheduleCreate, TournamentKnockoutCreate
 from app.models.match import Match, MatchStatus
 from app.api.v1.deps import get_current_tournament_admin, get_current_superuser, get_current_management_admin
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
 from app.core.supabase_client import get_signed_url
 
@@ -20,6 +20,10 @@ def create_tournament(
     tournament: TournamentCreate,
     current_user: User = Depends(get_current_management_admin)
 ):
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if not current_user.competition_id or str(tournament.competition_id) != str(current_user.competition_id):
+            raise HTTPException(status_code=403, detail="Not authorized to create tournament for this competition")
+            
     db_tournament = Tournament.model_validate(tournament)
     session.add(db_tournament)
     session.commit()
@@ -28,17 +32,44 @@ def create_tournament(
     return db_tournament.model_dump()
 
 @router.get("/", response_model=List[TournamentRead])
-def read_tournaments(session: Session = Depends(get_session)):
-    tournaments = session.exec(select(Tournament)).all()
+def read_tournaments(
+    *,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_management_admin)
+):
+    if current_user.role == UserRole.TOURNAMENT_ADMIN and current_user.tournament_id:
+        tournaments = session.exec(select(Tournament).where(Tournament.id == current_user.tournament_id)).all()
+    elif current_user.role == UserRole.TOURNAMENT_ADMIN and current_user.competition_id:
+        tournaments = session.exec(select(Tournament).where(Tournament.competition_id == current_user.competition_id)).all()
+    else:
+        tournaments = session.exec(select(Tournament)).all()
     return [t.model_dump() for t in tournaments]
 
 @router.get("/{tournament_id}", response_model=TournamentReadWithTeams)
-def read_tournament(*, session: Session = Depends(get_session), tournament_id: uuid.UUID):
+def read_tournament(
+    *, 
+    session: Session = Depends(get_session), 
+    tournament_id: uuid.UUID,
+    current_user: User = Depends(get_current_management_admin)
+):
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if current_user.tournament_id and current_user.tournament_id != tournament_id:
+            raise HTTPException(status_code=403, detail="Not authorized to access this tournament")
+        # If they are a tournament admin but have competition_id, they can see tournaments in that competition
+        # We should check if the tournament belongs to their competition
+        db_tournament = session.get(Tournament, tournament_id)
+        if db_tournament and current_user.competition_id and db_tournament.competition_id != current_user.competition_id:
+             raise HTTPException(status_code=403, detail="Not authorized to access this tournament")
+
     tournament = session.get(Tournament, tournament_id)
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
         
     res = tournament.model_dump()
+    
+    # ... rest of the logic
+    # (Leaving rest unchanged for now, will use multi_replace if needed, but the view_file showed the whole file)
+    # Actually, I'll just use the full logic here to avoid messing up.
     
     # Include competition data with signed image URL
     if tournament.competition:
@@ -64,6 +95,10 @@ def update_tournament(
     tournament: TournamentUpdate,
     current_user: User = Depends(get_current_management_admin)
 ):
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if current_user.tournament_id and current_user.tournament_id != tournament_id:
+            raise HTTPException(status_code=403, detail="Not authorized to update this tournament")
+        
     db_tournament = session.get(Tournament, tournament_id)
     if not db_tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
