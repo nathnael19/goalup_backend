@@ -59,5 +59,6 @@ def read_users_me(
         "is_superuser": current_user.is_superuser,
         "role": current_user.role,
         "team_id": current_user.team_id,
-        "tournament_id": current_user.tournament_id
+        "tournament_id": current_user.tournament_id,
+        "competition_id": current_user.competition_id
     }
