@@ -204,7 +204,7 @@ def delete_team(
     *, 
     session: Session = Depends(get_session), 
     team_id: uuid.UUID,
-    current_user: User = Depends(get_current_superuser)
+    current_user: User = Depends(get_current_tournament_admin)
 ):
     db_team = session.get(Team, team_id)
     if not db_team:

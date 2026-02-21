@@ -61,9 +61,6 @@ class RoleChecker:
         self.allowed_roles = allowed_roles
 
     def __call__(self, current_user: User = Depends(get_current_active_user)) -> User:
-        if current_user.is_superuser or current_user.role == UserRole.SUPER_ADMIN:
-            return current_user
-        
         if current_user.role not in self.allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -76,3 +73,4 @@ get_current_coach = RoleChecker([UserRole.COACH])
 get_current_referee = RoleChecker([UserRole.REFEREE])
 get_current_tournament_admin = RoleChecker([UserRole.TOURNAMENT_ADMIN])
 get_current_news_reporter = RoleChecker([UserRole.NEWS_REPORTER])
+get_current_management_admin = RoleChecker([UserRole.SUPER_ADMIN, UserRole.TOURNAMENT_ADMIN])

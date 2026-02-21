@@ -5,11 +5,18 @@ from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.competition import Competition, CompetitionCreate, CompetitionRead, CompetitionUpdate
 from app.core.supabase_client import get_signed_url
+from app.api.v1.deps import get_current_management_admin
+from app.models.user import User
 
 router = APIRouter()
 
 @router.post("/", response_model=CompetitionRead)
-def create_competition(*, session: Session = Depends(get_session), competition: CompetitionCreate):
+def create_competition(
+    *, 
+    session: Session = Depends(get_session), 
+    competition: CompetitionCreate,
+    current_user: User = Depends(get_current_management_admin)
+):
     db_competition = Competition.model_validate(competition)
     session.add(db_competition)
     session.commit()
@@ -40,7 +47,13 @@ def read_competition(*, session: Session = Depends(get_session), competition_id:
     return res
 
 @router.put("/{competition_id}", response_model=CompetitionRead)
-def update_competition(*, session: Session = Depends(get_session), competition_id: uuid.UUID, competition: CompetitionUpdate):
+def update_competition(
+    *, 
+    session: Session = Depends(get_session), 
+    competition_id: uuid.UUID, 
+    competition: CompetitionUpdate,
+    current_user: User = Depends(get_current_management_admin)
+):
     db_competition = session.get(Competition, competition_id)
     if not db_competition:
         raise HTTPException(status_code=404, detail="Competition not found")
@@ -56,7 +69,12 @@ def update_competition(*, session: Session = Depends(get_session), competition_i
     return res
 
 @router.delete("/{competition_id}")
-def delete_competition(*, session: Session = Depends(get_session), competition_id: uuid.UUID):
+def delete_competition(
+    *, 
+    session: Session = Depends(get_session), 
+    competition_id: uuid.UUID,
+    current_user: User = Depends(get_current_management_admin)
+):
     competition = session.get(Competition, competition_id)
     if not competition:
         raise HTTPException(status_code=404, detail="Competition not found")

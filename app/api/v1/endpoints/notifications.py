@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.notification import Notification, NotificationRead, NotificationUpdate
+from app.api.v1.deps import get_current_active_user, get_current_management_admin
+from app.models.user import User
 
 router = APIRouter()
 
@@ -12,6 +14,7 @@ router = APIRouter()
 def read_notifications(
     *,
     session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
     offset: int = 0,
     limit: int = 50,
 ):
@@ -30,6 +33,7 @@ def update_notification(
     session: Session = Depends(get_session),
     notification_id: uuid.UUID,
     notification: NotificationUpdate,
+    current_user: User = Depends(get_current_management_admin)
 ):
     db_notification = session.get(Notification, notification_id)
     if not db_notification:
@@ -45,7 +49,11 @@ def update_notification(
 
 
 @router.post("/read-all")
-def mark_all_as_read(*, session: Session = Depends(get_session)):
+def mark_all_as_read(
+    *, 
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_management_admin)
+):
     unread_notifications = session.exec(
         select(Notification).where(Notification.is_read == False)
     ).all()

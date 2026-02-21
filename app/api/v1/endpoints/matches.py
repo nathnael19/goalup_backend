@@ -12,7 +12,7 @@ from app.models.lineup import Lineup, LineupRead, LineupReadWithPlayer
 from app.models.goal import Goal, GoalReadWithPlayer
 from app.models.card import Card, CardReadWithPlayer
 from app.models.substitution import Substitution, SubstitutionReadWithPlayers
-from app.api.v1.deps import get_current_active_user, get_current_superuser, get_current_tournament_admin, get_current_coach
+from app.api.v1.deps import get_current_active_user, get_current_superuser, get_current_tournament_admin, get_current_coach, get_current_referee
 from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
 
@@ -243,7 +243,7 @@ def delete_match(
     *, 
     session: Session = Depends(get_session), 
     match_id: uuid.UUID,
-    current_user: User = Depends(get_current_superuser)
+    current_user: User = Depends(get_current_tournament_admin)
 ):
     match = session.get(Match, match_id)
     if not match:
@@ -284,7 +284,7 @@ def set_lineups(
             if str(l.team_id) != str(current_user.team_id):
                 print(f"DEBUG: Coach team_id mismatch. Expected {current_user.team_id} ({type(current_user.team_id)}), got {l.team_id} ({type(l.team_id)})")
                 raise HTTPException(status_code=403, detail="Coaches can only manage their own team's lineup")
-    elif current_user.role not in [UserRole.SUPER_ADMIN, UserRole.TOURNAMENT_ADMIN]:
+    elif current_user.role not in [UserRole.TOURNAMENT_ADMIN, UserRole.COACH, UserRole.REFEREE]:
         print(f"DEBUG: Role {current_user.role} not authorized")
         raise HTTPException(status_code=403, detail="Only coaches or admins can set lineups")
 

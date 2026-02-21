@@ -6,7 +6,7 @@ from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.tournament import Tournament, TournamentCreate, TournamentRead, TournamentUpdate, TournamentReadWithTeams, TournamentScheduleCreate, TournamentKnockoutCreate
 from app.models.match import Match, MatchStatus
-from app.api.v1.deps import get_current_tournament_admin, get_current_superuser
+from app.api.v1.deps import get_current_tournament_admin, get_current_superuser, get_current_management_admin
 from app.models.user import User
 from app.core.audit import record_audit_log
 from app.core.supabase_client import get_signed_url
@@ -18,7 +18,7 @@ def create_tournament(
     *, 
     session: Session = Depends(get_session), 
     tournament: TournamentCreate,
-    current_user: User = Depends(get_current_tournament_admin)
+    current_user: User = Depends(get_current_management_admin)
 ):
     db_tournament = Tournament.model_validate(tournament)
     session.add(db_tournament)
@@ -62,7 +62,7 @@ def update_tournament(
     session: Session = Depends(get_session), 
     tournament_id: uuid.UUID, 
     tournament: TournamentUpdate,
-    current_user: User = Depends(get_current_tournament_admin)
+    current_user: User = Depends(get_current_management_admin)
 ):
     db_tournament = session.get(Tournament, tournament_id)
     if not db_tournament:
@@ -105,7 +105,7 @@ def schedule_tournament(
     session: Session = Depends(get_session), 
     tournament_id: uuid.UUID, 
     schedule: TournamentScheduleCreate,
-    current_user: User = Depends(get_current_tournament_admin)
+    current_user: User = Depends(get_current_management_admin)
 ):
     tournament = session.get(Tournament, tournament_id)
     if not tournament:
@@ -222,7 +222,7 @@ def generate_knockout_fixtures(
     session: Session = Depends(get_session), 
     tournament_id: uuid.UUID, 
     schedule: TournamentKnockoutCreate,
-    current_user: User = Depends(get_current_tournament_admin)
+    current_user: User = Depends(get_current_management_admin)
 ):
     tournament = session.get(Tournament, tournament_id)
     if not tournament:

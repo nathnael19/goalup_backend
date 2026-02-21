@@ -25,7 +25,7 @@ def create_player(
             raise HTTPException(status_code=403, detail="Coach user has no assigned team")
         if player.team_id != current_user.team_id:
             raise HTTPException(status_code=403, detail="Coaches can only create players for their own team")
-    elif current_user.role not in [UserRole.SUPER_ADMIN, UserRole.TOURNAMENT_ADMIN]:
+    elif current_user.role not in [UserRole.TOURNAMENT_ADMIN]:
         raise HTTPException(status_code=403, detail="The user doesn't have enough privileges")
 
     # Manual lowercase to handle any potential Enum/SQLAlchemy mismatch
@@ -102,7 +102,7 @@ def update_player(
     if current_user.role == UserRole.COACH:
         if db_player.team_id != current_user.team_id:
             raise HTTPException(status_code=403, detail="Coaches can only update their own team's players")
-    elif current_user.role not in [UserRole.SUPER_ADMIN, UserRole.TOURNAMENT_ADMIN]:
+    elif current_user.role not in [UserRole.TOURNAMENT_ADMIN]:
         raise HTTPException(status_code=403, detail="The user doesn't have enough privileges")
 
     player_data = player.model_dump(exclude_unset=True)
@@ -171,7 +171,8 @@ def delete_player(
     if current_user.role == UserRole.COACH:
         if db_player.team_id != current_user.team_id:
             raise HTTPException(status_code=403, detail="Coaches can only delete their own team's players")
-    elif current_user.role not in [UserRole.SUPER_ADMIN]: # Tournament Admins usually don't delete players? Plan says Super Admin only for deletion.
+    elif current_user.role not in [UserRole.TOURNAMENT_ADMIN]:
+ # Tournament Admins usually don't delete players? Plan says Super Admin only for deletion.
         raise HTTPException(status_code=403, detail="The user doesn't have enough privileges")
 
     # Audit Log

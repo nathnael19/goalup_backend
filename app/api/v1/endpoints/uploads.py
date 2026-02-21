@@ -1,13 +1,18 @@
 import os
 import uuid
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from app.core.supabase_client import supabase
 from app.core.config import settings
+from app.api.v1.deps import get_current_active_user
+from app.models.user import User
 
 router = APIRouter()
 
 @router.post("")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_active_user)
+):
     # Validate file type (simple check)
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
