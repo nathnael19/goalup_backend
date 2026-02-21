@@ -33,6 +33,7 @@ def create_user(
         role=user_in.role,
         team_id=user_in.team_id,
         tournament_id=user_in.tournament_id,
+        competition_id=user_in.competition_id,
         is_active=True,
         is_superuser=(user_in.role == UserRole.SUPER_ADMIN)
     )

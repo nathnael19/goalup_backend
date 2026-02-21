@@ -30,6 +30,9 @@ class User(SQLModel, table=True):
     # Association for Tournament Admins/Referees
     tournament_id: Optional[uuid.UUID] = Field(default=None, foreign_key="tournament.id", nullable=True)
     
+    # Association for Competition Admins
+    competition_id: Optional[uuid.UUID] = Field(default=None, foreign_key="competition.id", nullable=True)
+    
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -40,6 +43,7 @@ class UserCreate(SQLModel):
     role: UserRole = Field(default=UserRole.VIEWER)
     team_id: Optional[uuid.UUID] = None
     tournament_id: Optional[uuid.UUID] = None
+    competition_id: Optional[uuid.UUID] = None
 
 class UserRead(SQLModel):
     id: int
@@ -50,6 +54,7 @@ class UserRead(SQLModel):
     role: UserRole
     team_id: Optional[uuid.UUID] = None
     tournament_id: Optional[uuid.UUID] = None
+    competition_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
 
@@ -61,3 +66,4 @@ class UserUpdate(SQLModel):
     is_active: Optional[bool] = None
     team_id: Optional[uuid.UUID] = None
     tournament_id: Optional[uuid.UUID] = None
+    competition_id: Optional[uuid.UUID] = None
