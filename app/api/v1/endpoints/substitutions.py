@@ -23,6 +23,10 @@ def create_substitution(
     match = session.get(Match, substitution.match_id)
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
+    
+    # Ensure this referee is assigned to the match
+    if match.referee_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You are not the assigned referee for this match")
         
     team = session.get(Team, substitution.team_id)
     if not team:
@@ -69,6 +73,10 @@ def delete_substitution(
     substitution = session.get(Substitution, substitution_id)
     if not substitution:
         raise HTTPException(status_code=404, detail="Substitution not found")
+    # Ensure this referee is assigned to the match
+    match = session.get(Match, substitution.match_id)
+    if match and match.referee_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You are not the assigned referee for this match")
     # Audit Log
     record_audit_log(
         session,

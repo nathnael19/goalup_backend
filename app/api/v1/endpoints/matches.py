@@ -12,7 +12,7 @@ from app.models.lineup import Lineup, LineupRead, LineupReadWithPlayer
 from app.models.goal import Goal, GoalReadWithPlayer
 from app.models.card import Card, CardReadWithPlayer
 from app.models.substitution import Substitution, SubstitutionReadWithPlayers
-from app.api.v1.deps import get_current_active_user, get_current_superuser, get_current_coach, get_current_referee, get_current_match_operator
+from app.api.v1.deps import get_current_active_user, get_current_superuser, get_current_coach, get_current_referee
 from app.models.user import User, UserRole, UserRead
 from app.core.audit import record_audit_log
 
@@ -93,6 +93,9 @@ def read_matches(
                 query = query.where(Match.tournament_id == current_user.tournament_id)
             elif current_user.competition_id:
                 query = query.join(Tournament).where(Tournament.competition_id == current_user.competition_id)
+        elif current_user.role == UserRole.REFEREE:
+            # Referees only see their assigned matches
+            query = query.where(Match.referee_id == current_user.id)
 
         if tournament_id:
             query = query.where(Match.tournament_id == tournament_id)
@@ -192,17 +195,14 @@ def update_match(
     session: Session = Depends(get_session), 
     match_id: uuid.UUID, 
     match: MatchUpdate,
-    current_user: User = Depends(get_current_match_operator)
+    current_user: User = Depends(get_current_referee)
 ):
     db_match = session.get(Match, match_id)
     if not db_match:
         raise HTTPException(status_code=404, detail="Match not found")
     
-    # RBAC Check
-    if current_user.role == UserRole.TOURNAMENT_ADMIN:
-        if current_user.tournament_id != db_match.tournament_id:
-            raise HTTPException(status_code=403, detail="Tournament Admins can only update matches for their assigned tournament")
-    elif current_user.role == UserRole.REFEREE:
+    # RBAC Check: Referees can only update their assigned match
+    if current_user.role == UserRole.REFEREE:
         if db_match.referee_id != current_user.id:
             raise HTTPException(status_code=403, detail="Referees can only update matches they are assigned to")
 
@@ -300,17 +300,14 @@ def set_lineups(
     formation_b: Optional[str] = Query(None),
     current_user: User = Depends(get_current_active_user)
 ):
-    # RBAC Check: Coaches can only set lineups for THEIR team
-    if current_user.role == UserRole.COACH:
-        if not current_user.team_id:
-             raise HTTPException(status_code=403, detail="Coach user has no assigned team")
-        
-        # Verify all lineups being set are for the coach's team
-        for l in lineups:
-            if str(l.team_id) != str(current_user.team_id):
-                raise HTTPException(status_code=403, detail="Coaches can only manage their own team's lineup")
-    elif current_user.role not in [UserRole.SUPER_ADMIN, UserRole.COACH, UserRole.REFEREE]:
-        raise HTTPException(status_code=403, detail="Only coaches, referees, or super admins can set lineups")
+    # RBAC Check: only the coach of that team can set lineups
+    if current_user.role != UserRole.COACH:
+        raise HTTPException(status_code=403, detail="Only the team's coach can set lineups")
+    if not current_user.team_id:
+        raise HTTPException(status_code=403, detail="Coach user has no assigned team")
+    for l in lineups:
+        if str(l.team_id) != str(current_user.team_id):
+            raise HTTPException(status_code=403, detail="Coaches can only manage their own team's lineup")
 
     db_match = session.get(Match, match_id)
     if not db_match:

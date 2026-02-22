@@ -6,7 +6,7 @@ from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.tournament import Tournament, TournamentCreate, TournamentRead, TournamentUpdate, TournamentReadWithTeams, TournamentScheduleCreate, TournamentKnockoutCreate
 from app.models.match import Match, MatchStatus
-from app.api.v1.deps import get_current_tournament_admin, get_current_superuser, get_current_management_admin
+from app.api.v1.deps import get_current_tournament_admin, get_current_superuser, get_current_management_admin, get_current_active_user
 from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
 from app.core.supabase_client import get_signed_url
@@ -35,7 +35,7 @@ def create_tournament(
 def read_tournaments(
     *,
     session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_management_admin)
+    current_user: User = Depends(get_current_active_user)
 ):
     if current_user.role == UserRole.TOURNAMENT_ADMIN and current_user.tournament_id:
         tournaments = session.exec(select(Tournament).where(Tournament.id == current_user.tournament_id)).all()
@@ -50,7 +50,7 @@ def read_tournament(
     *, 
     session: Session = Depends(get_session), 
     tournament_id: uuid.UUID,
-    current_user: User = Depends(get_current_management_admin)
+    current_user: User = Depends(get_current_active_user)
 ):
     if current_user.role == UserRole.TOURNAMENT_ADMIN:
         if current_user.tournament_id and current_user.tournament_id != tournament_id:

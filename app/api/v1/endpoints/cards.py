@@ -25,6 +25,10 @@ def create_card(
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
     
+    # Ensure this referee is assigned to the match
+    if match.referee_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You are not the assigned referee for this match")
+    
     # Verify team exists
     team = session.get(Team, card.team_id)
     if not team:
@@ -82,6 +86,10 @@ def delete_card(
     
     # Revert player stats
     player = session.get(Player, db_card.player_id)
+    # Ensure this referee is assigned to the match
+    match = session.get(Match, db_card.match_id)
+    if match and match.referee_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You are not the assigned referee for this match")
     if player:
         if db_card.type == "yellow":
             player.yellow_cards = max(0, player.yellow_cards - 1)

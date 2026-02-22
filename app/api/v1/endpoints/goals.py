@@ -25,6 +25,10 @@ def create_goal(
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
     
+    # Ensure this referee is assigned to the match
+    if match.referee_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You are not the assigned referee for this match")
+    
     # Verify team exists
     team = session.get(Team, goal.team_id)
     if not team:
@@ -96,6 +100,9 @@ def delete_goal(
     
     match = session.get(Match, db_goal.match_id)
     if match:
+        # Ensure this referee is assigned to the match
+        if match.referee_id != current_user.id:
+            raise HTTPException(status_code=403, detail="You are not the assigned referee for this match")
         # Deduct from score
         if db_goal.team_id == match.team_a_id:
             match.score_a = max(0, match.score_a - 1)
