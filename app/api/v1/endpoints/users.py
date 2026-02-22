@@ -5,7 +5,7 @@ from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.user import User, UserCreate, UserRead, UserUpdate, UserRole
 from app.core.security import get_password_hash
-from app.api.v1.deps import get_current_superuser
+from app.api.v1.deps import get_current_superuser, get_current_management_admin
 from app.core.audit import record_audit_log
 
 router = APIRouter()
@@ -55,14 +55,19 @@ def create_user(
 @router.get("/", response_model=List[UserRead])
 def read_users(
     session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_management_admin),
+    role: Optional[UserRole] = None,
     offset: int = 0,
     limit: int = 100
 ):
     """
-    List all users. Only Super Admins can do this.
+    List all users. Optimized for admin use (role filtering).
     """
-    users = session.exec(select(User).offset(offset).limit(limit)).all()
+    statement = select(User)
+    if role:
+        statement = statement.where(User.role == role)
+    
+    users = session.exec(statement.offset(offset).limit(limit)).all()
     return users
 
 @router.get("/{user_id}", response_model=UserRead)

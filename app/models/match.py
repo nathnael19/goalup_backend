@@ -31,6 +31,7 @@ class MatchBase(SQLModel):
     is_extra_time: bool = Field(default=False)
     formation_a: str = Field(default="4-3-3")
     formation_b: str = Field(default="4-3-3")
+    referee_id: Optional[int] = Field(default=None, foreign_key="users.id", nullable=True)
 
 class Match(MatchBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -42,6 +43,7 @@ class Match(MatchBase, table=True):
     cards_list: List["Card"] = Relationship(back_populates="match", cascade_delete=True)
     substitutions: List["Substitution"] = Relationship(back_populates="match", cascade_delete=True)
     lineups: List["Lineup"] = Relationship(back_populates="match", cascade_delete=True)
+    referee: Optional["User"] = Relationship()
 
 class MatchCreate(MatchBase):
     pass
@@ -67,6 +69,7 @@ class MatchUpdate(SQLModel):
     match_day: Optional[int] = None
     formation_a: Optional[str] = None
     formation_b: Optional[str] = None
+    referee_id: Optional[int] = None
 
 from app.models.card import Card
 from app.models.goal import Goal

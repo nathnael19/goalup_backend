@@ -12,8 +12,8 @@ from app.models.lineup import Lineup, LineupRead, LineupReadWithPlayer
 from app.models.goal import Goal, GoalReadWithPlayer
 from app.models.card import Card, CardReadWithPlayer
 from app.models.substitution import Substitution, SubstitutionReadWithPlayers
-from app.api.v1.deps import get_current_active_user, get_current_superuser, get_current_tournament_admin, get_current_coach, get_current_referee
-from app.models.user import User, UserRole
+from app.api.v1.deps import get_current_active_user, get_current_superuser, get_current_coach, get_current_referee, get_current_match_operator
+from app.models.user import User, UserRole, UserRead
 from app.core.audit import record_audit_log
 
 router = APIRouter()
@@ -29,18 +29,15 @@ class EnrichedMatchRead(MatchRead):
     goals: List[GoalReadWithPlayer] = []
     cards: List[CardReadWithPlayer] = []
     substitutions: List[SubstitutionReadWithPlayers] = []
+    referee: Optional[UserRead] = None
 
 @router.post("/", response_model=MatchRead)
 def create_match(
     *, 
     session: Session = Depends(get_session), 
     match: MatchCreate,
-    current_user: User = Depends(get_current_tournament_admin)
+    current_user: User = Depends(get_current_superuser)
 ):
-    # RBAC Check: Tournament Admins can only create matches for THEIR tournament
-    if current_user.role == UserRole.TOURNAMENT_ADMIN:
-        if current_user.tournament_id != match.tournament_id:
-            raise HTTPException(status_code=403, detail="Tournament Admins can only create matches for their assigned tournament")
 
     # Verify tournament and teams exist
     tournament = session.get(Tournament, match.tournament_id)
@@ -88,6 +85,7 @@ def read_matches(
             selectinload(Match.cards_list).selectinload(Card.player),
             selectinload(Match.substitutions).selectinload(Substitution.player_in),
             selectinload(Match.substitutions).selectinload(Substitution.player_out),
+            selectinload(Match.referee),
         )
 
         if current_user.role == UserRole.TOURNAMENT_ADMIN:
@@ -147,6 +145,8 @@ def read_match(
             selectinload(Match.substitutions).selectinload(Substitution.player_in),
             selectinload(Match.substitutions).selectinload(Substitution.player_out),
         )
+        # ... rest of the logic
+        query = query.where(Match.id == match_id)
         match = session.exec(query).first()
         if not match:
             raise HTTPException(status_code=404, detail="Match not found")
@@ -157,7 +157,10 @@ def read_match(
                 raise HTTPException(status_code=403, detail="Not authorized to access this match")
             if current_user.competition_id and match.tournament.competition_id != current_user.competition_id:
                 raise HTTPException(status_code=403, detail="Not authorized to access this match")
-        
+        elif current_user.role == UserRole.REFEREE:
+            if match.referee_id != current_user.id:
+                 raise HTTPException(status_code=403, detail="Not authorized to access this match as you are not the assigned referee")
+
         em = EnrichedMatchRead.model_validate(match)
         if match.tournament:
             tournament_dict = TournamentReadWithCompetition.model_validate(match.tournament).model_dump()
@@ -171,6 +174,8 @@ def read_match(
         em.goals = [GoalReadWithPlayer.model_validate(g) for g in match.goals_list]
         em.cards = [CardReadWithPlayer.model_validate(c) for c in match.cards_list]
         em.substitutions = [SubstitutionReadWithPlayers.model_validate(s) for s in match.substitutions]
+        if match.referee:
+            em.referee = UserRead.model_validate(match.referee)
         
         return em
     except HTTPException:
@@ -187,16 +192,19 @@ def update_match(
     session: Session = Depends(get_session), 
     match_id: uuid.UUID, 
     match: MatchUpdate,
-    current_user: User = Depends(get_current_tournament_admin)
+    current_user: User = Depends(get_current_match_operator)
 ):
     db_match = session.get(Match, match_id)
     if not db_match:
         raise HTTPException(status_code=404, detail="Match not found")
     
-    # RBAC Check: Tournament Admins can only update matches for THEIR tournament
+    # RBAC Check
     if current_user.role == UserRole.TOURNAMENT_ADMIN:
         if current_user.tournament_id != db_match.tournament_id:
             raise HTTPException(status_code=403, detail="Tournament Admins can only update matches for their assigned tournament")
+    elif current_user.role == UserRole.REFEREE:
+        if db_match.referee_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Referees can only update matches they are assigned to")
 
     # Lock match data if finished for > 1 hour
     if db_match.status == "finished" and db_match.finished_at:
@@ -263,15 +271,11 @@ def delete_match(
     *, 
     session: Session = Depends(get_session), 
     match_id: uuid.UUID,
-    current_user: User = Depends(get_current_tournament_admin)
+    current_user: User = Depends(get_current_superuser)
 ):
     match = session.get(Match, match_id)
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
-
-    # RBAC Check: Only Super Admins can delete matches
-    if current_user.role == UserRole.TOURNAMENT_ADMIN:
-        raise HTTPException(status_code=403, detail="Tournament Admins cannot delete matches")
     
     # Audit Log
     record_audit_log(
@@ -296,21 +300,17 @@ def set_lineups(
     formation_b: Optional[str] = Query(None),
     current_user: User = Depends(get_current_active_user)
 ):
-    print(f"DEBUG: set_lineups called by {current_user.email} (Role: {current_user.role}, TeamID: {current_user.team_id}, Type: {type(current_user.team_id)})")
     # RBAC Check: Coaches can only set lineups for THEIR team
     if current_user.role == UserRole.COACH:
         if not current_user.team_id:
-             print("DEBUG: Coach has no team_id")
              raise HTTPException(status_code=403, detail="Coach user has no assigned team")
         
         # Verify all lineups being set are for the coach's team
         for l in lineups:
             if str(l.team_id) != str(current_user.team_id):
-                print(f"DEBUG: Coach team_id mismatch. Expected {current_user.team_id} ({type(current_user.team_id)}), got {l.team_id} ({type(l.team_id)})")
                 raise HTTPException(status_code=403, detail="Coaches can only manage their own team's lineup")
-    elif current_user.role not in [UserRole.TOURNAMENT_ADMIN, UserRole.COACH, UserRole.REFEREE]:
-        print(f"DEBUG: Role {current_user.role} not authorized")
-        raise HTTPException(status_code=403, detail="Only coaches or admins can set lineups")
+    elif current_user.role not in [UserRole.SUPER_ADMIN, UserRole.COACH, UserRole.REFEREE]:
+        raise HTTPException(status_code=403, detail="Only coaches, referees, or super admins can set lineups")
 
     db_match = session.get(Match, match_id)
     if not db_match:
