@@ -22,6 +22,7 @@ class User(SQLModel, table=True):
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
     role: UserRole = Field(default=UserRole.REFEREE)
+    profile_image_url: Optional[str] = Field(default=None, max_length=512)
     
     # Association for Coaches
     team_id: Optional[uuid.UUID] = Field(default=None, foreign_key="team.id", nullable=True)
@@ -29,8 +30,8 @@ class User(SQLModel, table=True):
     # Association for Tournament Admins/Referees
     tournament_id: Optional[uuid.UUID] = Field(default=None, foreign_key="tournament.id", nullable=True)
     
-    # Association for Competition Admins
     competition_id: Optional[uuid.UUID] = Field(default=None, foreign_key="competition.id", nullable=True)
+    profile_image_url: Optional[str] = Field(default=None, max_length=512)
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -54,6 +55,7 @@ class UserRead(SQLModel):
     team_id: Optional[uuid.UUID] = None
     tournament_id: Optional[uuid.UUID] = None
     competition_id: Optional[uuid.UUID] = None
+    profile_image_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -61,8 +63,10 @@ class UserUpdate(SQLModel):
     email: Optional[str] = None
     full_name: Optional[str] = None
     password: Optional[str] = None
+    current_password: Optional[str] = None
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
     team_id: Optional[uuid.UUID] = None
     tournament_id: Optional[uuid.UUID] = None
     competition_id: Optional[uuid.UUID] = None
+    profile_image_url: Optional[str] = None

@@ -76,7 +76,16 @@ def update_user_me(
         del update_data["is_superuser"]
 
     if "password" in update_data:
+        # Check current password if provided
+        if not update_data.get("current_password"):
+            raise HTTPException(status_code=400, detail="Current password is required to change password")
+        
+        if not verify_password(update_data.pop("current_password"), current_user.hashed_password):
+            raise HTTPException(status_code=400, detail="Incorrect current password")
+            
         update_data["hashed_password"] = get_password_hash(update_data.pop("password"))
+    elif "current_password" in update_data:
+        del update_data["current_password"]
 
     for key, value in update_data.items():
         setattr(current_user, key, value)
