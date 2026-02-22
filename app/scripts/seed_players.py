@@ -21,6 +21,9 @@ def seed_team_players():
         teams_query = session.execute(text("SELECT id, name FROM team")).fetchall()
         print(f"Found {len(teams_query)} teams.")
         
+        # Retroactively fix any previously seeded players missing the string position
+        session.execute(text("UPDATE player SET position = player_position_enum::varchar WHERE position IS NULL"))
+
         players_added = 0
         
         for team in teams_query:
@@ -59,15 +62,16 @@ def seed_team_players():
                 session.execute(
                     text("""
                         INSERT INTO player 
-                        (id, name, team_id, jersey_number, player_position_enum, goals, assists, yellow_cards, red_cards) 
-                        VALUES (:id, :name, :tid, :jersey, :pos, 0, 0, 0, 0)
+                        (id, name, team_id, jersey_number, player_position_enum, position, goals, assists, yellow_cards, red_cards) 
+                        VALUES (:id, :name, :tid, :jersey, :pos, :pos_str, 0, 0, 0, 0)
                     """),
                     {
                         "id": new_id,
                         "name": name,
                         "tid": team_id,
                         "jersey": jersey,
-                        "pos": pos
+                        "pos": pos,
+                        "pos_str": pos
                     }
                 )
                 players_added += 1
