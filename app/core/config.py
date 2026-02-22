@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, List
 from pydantic import validator
 
 class Settings(BaseSettings):
@@ -15,7 +15,14 @@ class Settings(BaseSettings):
     # JWT Settings
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200  # 30 days
-    ENVIRONMENT: str = "production" # "development", "production"
+    ENVIRONMENT: str = "production"  # "development", "production"
+
+    # CORS — comma-separated list of allowed origins, e.g. "https://goalup.webcode.codes,http://localhost:5173"
+    ALLOWED_ORIGINS: str = "http://localhost:5173,https://goalup.webcode.codes"
+
+    @property
+    def BACKEND_CORS_ORIGINS(self) -> List[str]:
+        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
 
     # Email Settings
     MAIL_USERNAME: Optional[str] = None

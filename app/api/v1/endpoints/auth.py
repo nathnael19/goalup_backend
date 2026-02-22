@@ -1,7 +1,9 @@
 from datetime import timedelta
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.database import get_session
@@ -10,10 +12,13 @@ from app.api.v1.deps import get_current_active_user
 from app.core.security import create_access_token, verify_password, get_password_hash
 from app.core.audit import record_audit_log
 
+limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
 
 @router.post("/login")
+@limiter.limit("5/minute")
 def login(
+    request: Request,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     session: Session = Depends(get_session)
 ):
