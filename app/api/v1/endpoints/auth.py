@@ -5,9 +5,10 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.database import get_session
-from app.core.security import create_access_token, verify_password
-from app.models.user import User
+from app.models.user import User, UserRead, UserUpdate
 from app.api.v1.deps import get_current_active_user
+from app.core.security import create_access_token, verify_password, get_password_hash
+from app.core.audit import record_audit_log
 
 router = APIRouter()
 
@@ -44,21 +45,88 @@ def login(
         "token_type": "bearer"
     }
 
-@router.get("/me")
+@router.get("/me", response_model=UserRead)
 def read_users_me(
     current_user: User = Depends(get_current_active_user)
 ):
     """
     Get current authenticated user.
     """
-    return {
-        "id": current_user.id,
-        "email": current_user.email,
-        "full_name": current_user.full_name,
-        "is_active": current_user.is_active,
-        "is_superuser": current_user.is_superuser,
-        "role": current_user.role,
-        "team_id": current_user.team_id,
-        "tournament_id": current_user.tournament_id,
-        "competition_id": current_user.competition_id
-    }
+    return current_user
+
+@router.patch("/me", response_model=UserRead)
+def update_user_me(
+    *,
+    session: Session = Depends(get_session),
+    user_in: UserUpdate,
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Update current user's profile.
+    """
+    update_data = user_in.model_dump(exclude_unset=True)
+    
+    # Do not allow users to change their own role or active status via this endpoint
+    # These should be managed by Super Admins via /users/{user_id}
+    if "role" in update_data:
+        del update_data["role"]
+    if "is_active" in update_data:
+        del update_data["is_active"]
+    if "is_superuser" in update_data:
+        del update_data["is_superuser"]
+
+    if "password" in update_data:
+        update_data["hashed_password"] = get_password_hash(update_data.pop("password"))
+
+    for key, value in update_data.items():
+        setattr(current_user, key, value)
+    
+    session.add(current_user)
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="UPDATE_SELF_PROFILE",
+        entity_type="User",
+        entity_id=str(current_user.id),
+        description=f"User {current_user.email} updated their own profile"
+    )
+    
+    session.commit()
+    session.refresh(current_user)
+    return current_user
+
+from pydantic import BaseModel
+class SetupPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+@router.post("/setup-password")
+def setup_password(
+    data: SetupPasswordRequest,
+    session: Session = Depends(get_session)
+):
+    """
+    Set user password using a setup token.
+    """
+    from app.core.security import decode_access_token, get_password_hash
+    
+    payload = decode_access_token(data.token)
+    if not payload or payload.get("type") != "setup_password":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired setup token"
+        )
+    
+    email = payload.get("sub")
+    statement = select(User).where(User.email == email)
+    user = session.exec(statement).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user.hashed_password = get_password_hash(data.password)
+    session.add(user)
+    session.commit()
+    
+    return {"message": "Password set successfully"}

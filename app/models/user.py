@@ -10,7 +10,6 @@ class UserRole(str, Enum):
     NEWS_REPORTER = "NEWS_REPORTER"
     COACH = "COACH"
     REFEREE = "REFEREE"
-    VIEWER = "VIEWER"
 
 class User(SQLModel, table=True):
     """Admin user model for authentication."""
@@ -22,7 +21,7 @@ class User(SQLModel, table=True):
     hashed_password: str = Field(max_length=255)
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
-    role: UserRole = Field(default=UserRole.VIEWER)
+    role: UserRole = Field(default=UserRole.REFEREE)
     
     # Association for Coaches
     team_id: Optional[uuid.UUID] = Field(default=None, foreign_key="team.id", nullable=True)
@@ -39,8 +38,8 @@ class User(SQLModel, table=True):
 class UserCreate(SQLModel):
     email: str = Field(unique=True, index=True, max_length=255)
     full_name: str = Field(max_length=255)
-    password: str = Field(max_length=255)
-    role: UserRole = Field(default=UserRole.VIEWER)
+    password: Optional[str] = Field(default=None, max_length=255)
+    role: UserRole = Field(default=UserRole.REFEREE)
     team_id: Optional[uuid.UUID] = None
     tournament_id: Optional[uuid.UUID] = None
     competition_id: Optional[uuid.UUID] = None

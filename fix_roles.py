@@ -8,7 +8,6 @@ engine = create_engine(settings.DATABASE_URL)
 def fix_and_upgrade():
     with Session(engine) as session:
         # Fix existing lowercase roles
-        session.execute(text("UPDATE users SET role = 'VIEWER' WHERE role = 'viewer'"))
         session.execute(text("UPDATE users SET role = 'SUPER_ADMIN' WHERE role = 'super_admin'"))
         session.commit()
         

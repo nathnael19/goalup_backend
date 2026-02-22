@@ -13,7 +13,7 @@ def run_sql(sql):
 try:
     print("Updating users table for RBAC...")
     # Add role column
-    run_sql("ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'viewer'")
+    run_sql("ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'REFEREE'")
     
     # Add team_id column for Coaches
     run_sql("ALTER TABLE users ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES team(id) ON DELETE SET NULL")

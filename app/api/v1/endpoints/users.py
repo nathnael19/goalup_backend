@@ -1,12 +1,14 @@
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.user import User, UserCreate, UserRead, UserUpdate, UserRole
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash, create_access_token
 from app.api.v1.deps import get_current_superuser, get_current_management_admin
 from app.core.audit import record_audit_log
+from app.core.email import send_invitation_email
+from datetime import timedelta
 
 router = APIRouter()
 
@@ -15,6 +17,7 @@ def create_user(
     *, 
     session: Session = Depends(get_session), 
     user_in: UserCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_superuser)
 ):
     """
@@ -26,10 +29,17 @@ def create_user(
     if existing_user:
         raise HTTPException(status_code=400, detail="User with this email already exists")
     
+    import secrets
+    from app.core.security import create_access_token
+    from datetime import timedelta
+
+    # Set password or generate invitation
+    password = user_in.password or secrets.token_urlsafe(16)
+    
     db_user = User(
         email=user_in.email,
         full_name=user_in.full_name,
-        hashed_password=get_password_hash(user_in.password),
+        hashed_password=get_password_hash(password),
         role=user_in.role,
         team_id=user_in.team_id,
         tournament_id=user_in.tournament_id,
@@ -38,6 +48,18 @@ def create_user(
         is_superuser=(user_in.role == UserRole.SUPER_ADMIN)
     )
     session.add(db_user)
+    session.flush() # Get the ID before commit if needed, or just commit later
+
+    # Generate setup token if no password was provided
+    if not user_in.password:
+        # Token valid for 24 hours
+        token = create_access_token(
+            data={"sub": str(db_user.email), "type": "setup_password"},
+            expires_delta=timedelta(hours=24)
+        )
+        # Use the new email service (runs in background)
+        invitation_link = f"http://localhost:5173/setup-password?token={token}"
+        background_tasks.add_task(send_invitation_email, db_user.email, invitation_link)
     
     # Audit Log
     record_audit_log(
@@ -45,7 +67,7 @@ def create_user(
         action="CREATE_USER",
         entity_type="User",
         entity_id=user_in.email,
-        description=f"Super Admin created user {user_in.email} with role {user_in.role}"
+        description=f"Super Admin created user {user_in.email} with role {user_in.role} (Invitation: {not user_in.password})"
     )
     
     session.commit()
