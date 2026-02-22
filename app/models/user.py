@@ -31,7 +31,6 @@ class User(SQLModel, table=True):
     tournament_id: Optional[uuid.UUID] = Field(default=None, foreign_key="tournament.id", nullable=True)
     
     competition_id: Optional[uuid.UUID] = Field(default=None, foreign_key="competition.id", nullable=True)
-    profile_image_url: Optional[str] = Field(default=None, max_length=512)
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

@@ -123,9 +123,13 @@ def update_user(
         raise HTTPException(status_code=404, detail="User not found")
     
     update_data = user_in.model_dump(exclude_unset=True)
-    if "password" in update_data:
-        update_data["hashed_password"] = get_password_hash(update_data.pop("password"))
     
+    # Restrict personal info updates for Super Admins on the User Management page
+    # They should only be allowed to update permissions/roles
+    for field in ["full_name", "email", "password"]:
+        if field in update_data:
+            del update_data[field]
+            
     if "role" in update_data:
         db_user.is_superuser = (update_data["role"] == UserRole.SUPER_ADMIN)
 
