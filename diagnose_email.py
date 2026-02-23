@@ -16,12 +16,16 @@ async def send_test_email():
     mail_pass = os.getenv("MAIL_PASSWORD")
     mail_from = os.getenv("MAIL_FROM", "info@goalup.com")
     mail_from_name = os.getenv("MAIL_FROM_NAME", "GoalUP Admin")
+    mail_starttls = os.getenv("MAIL_STARTTLS", "True").lower() == "true"
+    mail_ssl_tls = os.getenv("MAIL_SSL_TLS", "False").lower() == "true"
     
     print(f"USE_REAL_MAIL: {use_real}")
     print(f"MAIL_SERVER:   {mail_server}")
     print(f"MAIL_PORT:     {mail_port}")
     print(f"MAIL_USERNAME: {mail_user or 'Not Set'}")
     print(f"MAIL_FROM:     {mail_from}")
+    print(f"MAIL_STARTTLS: {mail_starttls}")
+    print(f"MAIL_SSL_TLS:  {mail_ssl_tls}")
     print("-" * 48)
     
     email = "test@example.com"
@@ -45,8 +49,8 @@ async def send_test_email():
         MAIL_PORT=mail_port,
         MAIL_SERVER=mail_server,
         MAIL_FROM_NAME=mail_from_name,
-        MAIL_STARTTLS=True,
-        MAIL_SSL_TLS=False,
+        MAIL_STARTTLS=mail_starttls,
+        MAIL_SSL_TLS=mail_ssl_tls,
         USE_CREDENTIALS=True
     )
 

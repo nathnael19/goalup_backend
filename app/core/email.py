@@ -23,6 +23,13 @@ async def send_invitation_email(email: str, invitation_link: str):
     Sends an invitation email with a password setup link.
     If USE_REAL_MAIL is False or credentials are missing, it logs to console.
     """
+    logger.info(f"Attempting to send invitation email to {email}")
+    print(f"DEBUG: Attempting to send email to {email}")
+    print(f"DEBUG: settings.USE_REAL_MAIL: {settings.USE_REAL_MAIL}")
+    print(f"DEBUG: settings.MAIL_USERNAME: {settings.MAIL_USERNAME}")
+    print(f"DEBUG: conf.MAIL_PORT: {conf.MAIL_PORT}")
+    print(f"DEBUG: conf.MAIL_SSL_TLS: {conf.MAIL_SSL_TLS}")
+    
     subject = "Welcome to GoalUP! Set up your password"
     body = f"""
     <h1>Welcome to GoalUP</h1>
