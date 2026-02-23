@@ -72,7 +72,6 @@ def read_matches(
     offset: int = 0, 
     limit: int = 100,
     tournament_id: Optional[uuid.UUID] = None,
-    current_user: User = Depends(get_current_active_user)
 ):
     try:
         query = select(Match).options(
@@ -87,15 +86,6 @@ def read_matches(
             selectinload(Match.substitutions).selectinload(Substitution.player_out),
             selectinload(Match.referee),
         )
-
-        if current_user.role == UserRole.TOURNAMENT_ADMIN:
-            if current_user.tournament_id:
-                query = query.where(Match.tournament_id == current_user.tournament_id)
-            elif current_user.competition_id:
-                query = query.join(Tournament).where(Tournament.competition_id == current_user.competition_id)
-        elif current_user.role == UserRole.REFEREE:
-            # Referees only see their assigned matches
-            query = query.where(Match.referee_id == current_user.id)
 
         if tournament_id:
             query = query.where(Match.tournament_id == tournament_id)
@@ -134,7 +124,6 @@ def read_match(
     *, 
     session: Session = Depends(get_session), 
     match_id: uuid.UUID,
-    current_user: User = Depends(get_current_active_user)
 ):
     try:
         query = select(Match).where(Match.id == match_id).options(
@@ -153,16 +142,6 @@ def read_match(
         match = session.exec(query).first()
         if not match:
             raise HTTPException(status_code=404, detail="Match not found")
-        
-        # RBAC Check
-        if current_user.role == UserRole.TOURNAMENT_ADMIN:
-            if current_user.tournament_id and match.tournament_id != current_user.tournament_id:
-                raise HTTPException(status_code=403, detail="Not authorized to access this match")
-            if current_user.competition_id and match.tournament.competition_id != current_user.competition_id:
-                raise HTTPException(status_code=403, detail="Not authorized to access this match")
-        elif current_user.role == UserRole.REFEREE:
-            if match.referee_id != current_user.id:
-                 raise HTTPException(status_code=403, detail="Not authorized to access this match as you are not the assigned referee")
 
         em = EnrichedMatchRead.model_validate(match)
         if match.tournament:

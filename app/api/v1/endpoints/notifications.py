@@ -14,7 +14,6 @@ router = APIRouter()
 def read_notifications(
     *,
     session: Session = Depends(get_session),
-    current_user: User = Depends(get_current_active_user),
     offset: int = 0,
     limit: int = 50,
 ):
