@@ -1,4 +1,5 @@
 from datetime import timedelta
+import logging
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
@@ -14,6 +15,7 @@ from app.core.audit import record_audit_log
 
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.post("/login")
 @limiter.limit("5/minute")
@@ -138,26 +140,22 @@ def forgot_password(
     statement = select(User).where(User.email == data.email)
     user = session.exec(statement).first()
     
-    if not user or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Account with this email was not found."
+    # Security: Always return the same message to prevent account enumeration
+    if user and user.is_active:
+        # Create reset token (expires in 2 hours)
+        expires_delta = timedelta(hours=2)
+        reset_token = create_access_token(
+            data={"sub": user.email, "type": "reset_password"},
+            expires_delta=expires_delta
         )
         
-    # Create reset token (expires in 2 hours)
-    expires_delta = timedelta(hours=2)
-    reset_token = create_access_token(
-        data={"sub": user.email, "type": "reset_password"},
-        expires_delta=expires_delta
-    )
-    
-    # Admin frontend URL from settings
-    reset_link = f"{settings.ADMIN_FRONTEND_URL}/reset-password?token={reset_token}"
-    
-    # Send email
-    background_tasks.add_task(send_reset_password_email, user.email, reset_link)
-    
-    return {"message": "Password reset link has been sent to your email."}
+        # Admin frontend URL from settings
+        reset_link = f"{settings.ADMIN_FRONTEND_URL}/reset-password?token={reset_token}"
+        
+        # Send email
+        background_tasks.add_task(send_reset_password_email, user.email, reset_link)
+        
+    return {"message": "If an account with this email exists, instructions have been sent."}
 
 @router.post("/reset-password")
 @limiter.limit("3/minute")
@@ -185,18 +183,27 @@ def reset_password(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    user.hashed_password = get_password_hash(data.new_password)
-    session.add(user)
-    session.commit()
-    
-    # Audit Log
-    record_audit_log(
-        session,
-        action="RESET_PASSWORD",
-        entity_type="User",
-        entity_id=str(user.id),
-        description=f"User {user.email} reset their password via token"
-    )
+    try:
+        user.hashed_password = get_password_hash(data.new_password)
+        session.add(user)
+        
+        # Record Audit Log inside the same transaction
+        record_audit_log(
+            session,
+            action="RESET_PASSWORD",
+            entity_type="User",
+            entity_id=str(user.id),
+            description=f"User {user.email} reset their password via token"
+        )
+        
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Failed to reset password for {user.email}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update password. Please contact support."
+        )
     
     return {"message": "Password reset successfully"}
 

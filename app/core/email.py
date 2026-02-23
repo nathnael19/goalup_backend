@@ -4,6 +4,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Initialize Resend once at module level
+if settings.RESEND_API_KEY:
+    resend.api_key = settings.RESEND_API_KEY
+
+def get_sender():
+    """Validates and returns the sender email address."""
+    if settings.USE_REAL_MAIL:
+        if not settings.MAIL_FROM or settings.MAIL_FROM == "onboarding@resend.dev":
+            logger.warning("PROD WARNING: Using sandbox sender or MAIL_FROM is unset with USE_REAL_MAIL=True")
+            # In a strict production environment, we might want to raise an error here
+        return settings.MAIL_FROM
+    return settings.MAIL_FROM or "onboarding@resend.dev"
+
 async def send_invitation_email(email: str, invitation_link: str):
     """
     Sends an invitation email using the official Resend Python SDK.
@@ -14,8 +27,6 @@ async def send_invitation_email(email: str, invitation_link: str):
         print(f"🔗 Link: {invitation_link}\n")
         return True
 
-    resend.api_key = settings.RESEND_API_KEY
-    
     welcome_msg = (
         "You're invited to join GoalUP — your all-in-one platform for managing "
         "football tournaments, fixtures, results, and team performance. "
@@ -23,7 +34,7 @@ async def send_invitation_email(email: str, invitation_link: str):
     )
 
     params: resend.Emails.SendParams = {
-        "from": settings.MAIL_FROM or "onboarding@resend.dev",
+        "from": get_sender(),
         "to": [email],
         "subject": "Welcome to GoalUP! Set up your account password",
         "html": f"""
@@ -87,11 +98,9 @@ async def send_reset_password_email(email: str, reset_link: str):
         print(f"\n[MOCK RESET EMAIL] To: {email}")
         print(f"🔗 Link: {reset_link}\n")
         return True
-
-    resend.api_key = settings.RESEND_API_KEY
     
     params: resend.Emails.SendParams = {
-        "from": settings.MAIL_FROM or "onboarding@resend.dev",
+        "from": get_sender(),
         "to": [email],
         "subject": "Reset your GoalUP password",
         "html": f"""
