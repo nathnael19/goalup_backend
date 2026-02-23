@@ -1,68 +1,80 @@
-from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
+import resend
 from app.core.config import settings
-from pydantic import EmailStr
 import logging
 
 logger = logging.getLogger(__name__)
 
-conf = ConnectionConfig(
-    MAIL_USERNAME=settings.MAIL_USERNAME or "",
-    MAIL_PASSWORD=settings.MAIL_PASSWORD or "",
-    MAIL_FROM=settings.MAIL_FROM,
-    MAIL_PORT=settings.MAIL_PORT,
-    MAIL_SERVER=settings.MAIL_SERVER,
-    MAIL_FROM_NAME=settings.MAIL_FROM_NAME,
-    MAIL_STARTTLS=settings.MAIL_STARTTLS,
-    MAIL_SSL_TLS=settings.MAIL_SSL_TLS,
-    USE_CREDENTIALS=True if settings.MAIL_USERNAME else False,
-    VALIDATE_CERTS=True if settings.ENVIRONMENT == "production" else False
-)
-
 async def send_invitation_email(email: str, invitation_link: str):
     """
-    Sends an invitation email with a password setup link.
-    If USE_REAL_MAIL is False or credentials are missing, it logs to console.
+    Sends an invitation email using the official Resend Python SDK.
     """
-    logger.info(f"Attempting to send invitation email to {email}")
-    print(f"DEBUG: Attempting to send email to {email}")
-    print(f"DEBUG: settings.USE_REAL_MAIL: {settings.USE_REAL_MAIL}")
-    print(f"DEBUG: settings.MAIL_USERNAME: {settings.MAIL_USERNAME}")
-    print(f"DEBUG: conf.MAIL_PORT: {conf.MAIL_PORT}")
-    print(f"DEBUG: conf.MAIL_SSL_TLS: {conf.MAIL_SSL_TLS}")
+    if not settings.USE_REAL_MAIL or not settings.RESEND_API_KEY:
+        print(f"\n[MOCK EMAIL] To: {email}")
+        print(f"Message: You're invited to join GoalUP...")
+        print(f"🔗 Link: {invitation_link}\n")
+        return True
+
+    resend.api_key = settings.RESEND_API_KEY
     
-    subject = "Welcome to GoalUP! Set up your password"
-    body = f"""
-    <h1>Welcome to GoalUP</h1>
-    <p>You have been invited to join the GoalUP Admin Panel.</p>
-    <p>Please click the link below to set up your password and activate your account:</p>
-    <a href="{invitation_link}">Set up my password</a>
-    <p>This link will expire in 24 hours.</p>
-    <p>If you did not expect this invitation, please ignore this email.</p>
-    """
-
-    if not settings.USE_REAL_MAIL or not settings.MAIL_USERNAME:
-        logger.info(f"SIMULATED EMAIL TO {email}")
-        print(f"\n--- SIMULATED EMAIL ---")
-        print(f"To:      {email}")
-        print(f"Subject: {subject}")
-        print(f"Link:    {invitation_link}")
-        print(f"Reason:  {'USE_REAL_MAIL=False' if not settings.USE_REAL_MAIL else 'MAIL_USERNAME not set'}")
-        print(f"--------------------------\n")
-        return
-
-    message = MessageSchema(
-        subject=subject,
-        recipients=[email],
-        body=body,
-        subtype=MessageType.html
+    welcome_msg = (
+        "You're invited to join GoalUP — your all-in-one platform for managing "
+        "football tournaments, fixtures, results, and team performance. "
+        "Get ready to organize, compete, and track every goal with ease!"
     )
 
-    fm = FastMail(conf)
+    params: resend.Emails.SendParams = {
+        "from": settings.MAIL_FROM or "onboarding@resend.dev",
+        "to": [email],
+        "subject": "Welcome to GoalUP! Set up your account password",
+        "html": f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+                <h1 style="color: #1a1a1a;">Welcome to GoalUP ⚽</h1>
+                
+                <p style="font-size: 1.05em; color: #444;">
+                    {welcome_msg}
+                </p>
+
+                <p>
+                    To activate your account and create your password, 
+                    please click the button below:
+                </p>
+
+                <div style="text-align: center; margin: 25px 0;">
+                    <a href="{invitation_link}" 
+                       style="background-color: #2563eb; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                       Set Up My Password
+                    </a>
+                </div>
+
+                <p style="font-size: 0.9em; color: #666;">
+                    ⏳ This link will expire in 24 hours.
+                </p>
+
+                <p style="font-size: 0.9em; color: #666;">
+                    If you did not expect this invitation, you can safely ignore this email.
+                </p>
+
+                <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;" />
+
+                <p style="font-size: 0.8em; color: #999;">
+                    © {settings.PROJECT_NAME or "GoalUP"} – Football Tournament Management System
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+    }
+
     try:
-        await fm.send_message(message)
-        logger.info(f"Invitation email sent to {email}")
+        # Note: resend-python is currently synchronous
+        email_response = resend.Emails.send(params)
+        logger.info(f"Email sent via Resend: {email_response}")
+        return True
     except Exception as e:
-        logger.error(f"Failed to send email to {email}: {str(e)}")
-        # Fallback to console on error
+        logger.error(f"Failed to send email via Resend SDK: {str(e)}")
         print(f"\n[EMAIL FAILED] Falling back to console for {email}:")
+        print(f"Error details: {e}")
         print(f"🔗 Link: {invitation_link}\n")
+        return False

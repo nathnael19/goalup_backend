@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:5173,https://goalup.webcode.codes"
 
     # Admin frontend URL used in invitation emails
-    ADMIN_FRONTEND_URL: str = "https://goalupadmin.webcode.codes"
+    ADMIN_FRONTEND_URL: str = "https://goalup.webcode.codes"
 
     @property
     def BACKEND_CORS_ORIGINS(self) -> List[str]:
@@ -30,18 +30,25 @@ class Settings(BaseSettings):
     # Email Settings
     MAIL_USERNAME: Optional[str] = None
     MAIL_PASSWORD: Optional[str] = None
-    MAIL_FROM: str = "info@goalup.com"
+    MAIL_FROM: Optional[str] = None
     MAIL_PORT: int = 587
     MAIL_SERVER: str = "smtp.gmail.com"
     MAIL_FROM_NAME: str = "GoalUP Admin"
     MAIL_STARTTLS: bool = True
     MAIL_SSL_TLS: bool = False
     USE_REAL_MAIL: bool = False
+    RESEND_API_KEY: Optional[str] = None
 
-    @validator("MAIL_USERNAME", "MAIL_PASSWORD", pre=True)
+    @validator("MAIL_USERNAME", "MAIL_PASSWORD", "MAIL_FROM", pre=True)
     def empty_string_to_none(cls, v):
         if v == "":
             return None
+        return v
+
+    @validator("MAIL_FROM")
+    def set_mail_from(cls, v, values):
+        if v is None:
+            return values.get("MAIL_USERNAME")
         return v
 
     class Config:
