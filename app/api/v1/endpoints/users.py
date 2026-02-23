@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.user import User, UserCreate, UserRead, UserUpdate, UserRole
 from app.core.security import get_password_hash, create_access_token
+from app.core.config import settings
 from app.api.v1.deps import get_current_superuser, get_current_management_admin
 from app.core.audit import record_audit_log
 from app.core.email import send_invitation_email
@@ -30,8 +31,6 @@ def create_user(
         raise HTTPException(status_code=400, detail="User with this email already exists")
     
     import secrets
-    from app.core.security import create_access_token
-    from datetime import timedelta
 
     # Set password or generate invitation
     password = user_in.password or secrets.token_urlsafe(16)
@@ -58,7 +57,7 @@ def create_user(
             expires_delta=timedelta(hours=24)
         )
         # Use the new email service (runs in background)
-        invitation_link = f"http://localhost:5173/setup-password?token={token}"
+        invitation_link = f"{settings.ADMIN_FRONTEND_URL}/setup-password?token={token}"
         background_tasks.add_task(send_invitation_email, db_user.email, invitation_link)
     
     # Audit Log

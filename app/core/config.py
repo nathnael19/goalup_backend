@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # CORS — comma-separated list of allowed origins, e.g. "https://goalup.webcode.codes,http://localhost:5173"
     ALLOWED_ORIGINS: str = "http://localhost:5173,https://goalup.webcode.codes"
 
+    # Admin frontend URL used in invitation emails
+    ADMIN_FRONTEND_URL: str = "https://goalupadmin.webcode.codes"
+
     @property
     def BACKEND_CORS_ORIGINS(self) -> List[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
