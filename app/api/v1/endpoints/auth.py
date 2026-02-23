@@ -1,6 +1,6 @@
 from datetime import timedelta
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -114,6 +114,91 @@ from pydantic import BaseModel
 class SetupPasswordRequest(BaseModel):
     token: str
     password: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+@router.post("/forgot-password")
+@limiter.limit("3/minute")
+def forgot_password(
+    request: Request,
+    data: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session)
+):
+    """
+    Request a password reset email.
+    """
+    from app.core.email import send_reset_password_email
+    
+    statement = select(User).where(User.email == data.email)
+    user = session.exec(statement).first()
+    
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account with this email was not found."
+        )
+        
+    # Create reset token (expires in 2 hours)
+    expires_delta = timedelta(hours=2)
+    reset_token = create_access_token(
+        data={"sub": user.email, "type": "reset_password"},
+        expires_delta=expires_delta
+    )
+    
+    # Admin frontend URL from settings
+    reset_link = f"{settings.ADMIN_FRONTEND_URL}/reset-password?token={reset_token}"
+    
+    # Send email
+    background_tasks.add_task(send_reset_password_email, user.email, reset_link)
+    
+    return {"message": "Password reset link has been sent to your email."}
+
+@router.post("/reset-password")
+@limiter.limit("3/minute")
+def reset_password(
+    request: Request,
+    data: ResetPasswordRequest,
+    session: Session = Depends(get_session)
+):
+    """
+    Reset password using a reset token.
+    """
+    from app.core.security import decode_access_token, get_password_hash
+    
+    payload = decode_access_token(data.token)
+    if not payload or payload.get("type") != "reset_password":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token"
+        )
+    
+    email = payload.get("sub")
+    statement = select(User).where(User.email == email)
+    user = session.exec(statement).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user.hashed_password = get_password_hash(data.new_password)
+    session.add(user)
+    session.commit()
+    
+    # Audit Log
+    record_audit_log(
+        session,
+        action="RESET_PASSWORD",
+        entity_type="User",
+        entity_id=str(user.id),
+        description=f"User {user.email} reset their password via token"
+    )
+    
+    return {"message": "Password reset successfully"}
 
 @router.post("/setup-password")
 def setup_password(
