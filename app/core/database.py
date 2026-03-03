@@ -1,9 +1,26 @@
 from sqlmodel import SQLModel, create_engine, Session
 from app.core.config import settings
 
+
+def _get_database_url() -> str:
+    """
+    Pick a database URL based on ENVIRONMENT.
+
+    - production / default  -> DATABASE_URL
+    - development           -> DATABASE_URL_DEV (if set) else DATABASE_URL
+    - test                  -> DATABASE_URL_TEST (if set) else DATABASE_URL
+    """
+    env = (settings.ENVIRONMENT or "production").lower()
+    if env == "development" and getattr(settings, "DATABASE_URL_DEV", None):
+        return settings.DATABASE_URL_DEV  # type: ignore[return-value]
+    if env in {"test", "testing"} and getattr(settings, "DATABASE_URL_TEST", None):
+        return settings.DATABASE_URL_TEST  # type: ignore[return-value]
+    return settings.DATABASE_URL
+
+
 # Neon/PgBouncer often works best with simplified connect_args when the URL already contains them.
 engine = create_engine(
-    settings.DATABASE_URL,
+    _get_database_url(),
     pool_size=10,
     max_overflow=5,
     pool_pre_ping=True,       # Tests connection before use
