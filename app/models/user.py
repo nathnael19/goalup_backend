@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import uuid
 from enum import Enum
@@ -36,8 +36,12 @@ class User(SQLModel, table=True):
     
     competition_id: Optional[uuid.UUID] = Field(default=None, foreign_key="competition.id", nullable=True)
     
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # Account lockout / soft delete
+    failed_login_attempts: int = Field(default=0)
+    lockout_until: Optional[datetime] = Field(default=None, nullable=True)
+    is_deleted: bool = Field(default=False)
 
 class UserCreate(SQLModel):
     email: str = Field(unique=True, index=True, max_length=255)
