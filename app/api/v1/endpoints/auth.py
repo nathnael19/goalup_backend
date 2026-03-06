@@ -17,6 +17,8 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+from app.core.supabase import supabase
+
 @router.post("/login")
 @limiter.limit("5/minute")
 def login(
@@ -25,32 +27,48 @@ def login(
     session: Session = Depends(get_session)
 ):
     """
-    OAuth2 compatible token login, get an access token for future requests.
+    OAuth2 compatible token login, authenticate with Supabase Auth.
     """
-    # Find user by email (username field in OAuth2 form)
-    statement = select(User).where(User.email == form_data.username)
-    user = session.exec(statement).first()
-    
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    try:
+        # Authenticate with Supabase
+        auth_response = supabase.auth.sign_in_with_password({
+            "email": form_data.username,
+            "password": form_data.password
+        })
+        
+        if not auth_response.user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+            
+        # Get user from our public.users table to check active status and role
+        # Supabase ID is a UUID string, match with our UUID ID
+        user_id = auth_response.user.id
+        statement = select(User).where(User.id == user_id)
+        user = session.exec(statement).first()
+        
+        if not user:
+            # This should not happen if the trigger is working, but safety first
+            raise HTTPException(status_code=404, detail="User profile not found")
+            
+        if not user.is_active:
+            raise HTTPException(status_code=400, detail="Inactive user")
+            
+        return {
+            "access_token": auth_response.session.access_token,
+            "token_type": "bearer",
+            "refresh_token": auth_response.session.refresh_token,
+            "user": user
+        }
+    except Exception as e:
+        logger.error(f"Login failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    if not user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    
-    # Create access token
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": str(user.id)}, expires_delta=access_token_expires
-    )
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
 
 @router.get("/me", response_model=UserRead)
 def read_users_me(
