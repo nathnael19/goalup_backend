@@ -8,30 +8,32 @@ from app.models.user import User, UserRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"/api/v1/auth/login")
 
+from app.core.supabase import supabase
+
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     session: Session = Depends(get_session)
 ) -> User:
-    """Get current authenticated user from JWT token."""
+    """Get current authenticated user by verifying token with Supabase Auth."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    payload = decode_access_token(token)
-    if payload is None:
-        raise credentials_exception
-    
-    user_id = payload.get("sub")
-    if user_id is None:
-        raise credentials_exception
-    
     try:
-        user = session.get(User, int(user_id))
-        if user is None:
+        # Verify token with Supabase
+        user_response = supabase.auth.get_user(token)
+        if not user_response.user:
             raise credentials_exception
-    except Exception:
+            
+        user_id = uuid.UUID(user_response.user.id)
+        user = session.get(User, user_id)
+        if user is None:
+            # If user exists in Auth but not in our table, session might be out of sync
+            raise credentials_exception
+    except Exception as e:
+        # logger.error(f"Auth verification failed: {e}")
         raise credentials_exception
     
     return user
