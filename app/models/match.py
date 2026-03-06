@@ -31,7 +31,7 @@ class MatchBase(SQLModel):
     is_extra_time: bool = Field(default=False)
     formation_a: str = Field(default="4-3-3")
     formation_b: str = Field(default="4-3-3")
-    referee_id: Optional[int] = Field(default=None, foreign_key="users.id", nullable=True)
+    referee_id: Optional[uuid.UUID] = Field(default=None, foreign_key="users.id", nullable=True)
 
 class Match(MatchBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -69,7 +69,7 @@ class MatchUpdate(SQLModel):
     match_day: Optional[int] = None
     formation_a: Optional[str] = None
     formation_b: Optional[str] = None
-    referee_id: Optional[int] = None
+    referee_id: Optional[uuid.UUID] = None
 
 from app.models.card import Card
 from app.models.goal import Goal
