@@ -3,49 +3,82 @@ Script to create an admin user for the GoalUp backend.
 Run this script to create the initial admin user.
 """
 import sys
-from sqlmodel import Session, select
-from app.core.database import engine
-from app.core.security import get_password_hash
-from app.models.user import User
+import os
+from dotenv import load_dotenv
+from supabase import create_client, Client
+
+# Add the project root to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 def create_admin_user(email: str, password: str, full_name: str):
-    """Create an admin user."""
-    with Session(engine) as session:
+    """Create an admin user in Supabase."""
+    load_dotenv()
+    
+    supabase_url = os.environ.get("SUPABASE_PROJECT_URL")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    
+    if not supabase_url or not supabase_key:
+        print("Error: SUPABASE_PROJECT_URL and SUPABASE_SERVICE_ROLE_KEY must be configured in .env")
+        return
+
+    # Initialize Supabase Admin Client
+    supabase: Client = create_client(supabase_url, supabase_key)
+    
+    try:
         # Check if user already exists
-        statement = select(User).where(User.email == email)
-        existing_user = session.exec(statement).first()
+        response = supabase.table('users').select('*').eq('email', email).execute()
         
-        if existing_user:
+        if len(response.data) > 0:
             print(f"User with email {email} already exists!")
+            existing_user = response.data[0]
+            if not existing_user.get('is_superuser'):
+                print("Upgrading existing user to SUPER_ADMIN...")
+                supabase.table('users').update({
+                    'is_superuser': True,
+                    'role': 'SUPER_ADMIN'
+                }).eq('id', existing_user['id']).execute()
+                print("✅ User upgraded successfully!")
             return
         
-        # Create new admin user
-        hashed_password = get_password_hash(password)
-        user = User(
-            email=email,
-            full_name=full_name,
-            hashed_password=hashed_password,
-            is_active=True,
-            is_superuser=True
-        )
+        # Create new admin user in Auth
+        print("Creating new user in Supabase Auth...")
+        user_response = supabase.auth.admin.create_user({
+            "email": email,
+            "password": password,
+            "email_confirm": True,
+            "user_metadata": {
+                "full_name": full_name
+            }
+        })
         
-        session.add(user)
-        session.commit()
-        session.refresh(user)
+        user_id = user_response.user.id
+        
+        # Note: The handle_new_user trigger automatically inserts the user into public.users.
+        # Now update the created public.users record to be a super admin.
+        print("Upgrading user role to SUPER_ADMIN...")
+        supabase.table('users').update({
+            'is_superuser': True,
+            'role': 'SUPER_ADMIN'
+        }).eq('id', user_id).execute()
         
         print(f"✅ Admin user created successfully!")
-        print(f"   Email: {user.email}")
-        print(f"   Name: {user.full_name}")
-        print(f"   ID: {user.id}")
+        print(f"   Email: {email}")
+        print(f"   Name: {full_name}")
+        print(f"   ID: {user_id}")
+        
+    except Exception as e:
+        print(f"❌ Error creating admin user: {e}")
+
+import getpass
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("Usage: python create_admin.py <email> <password> <full_name>")
-        print('Example: python create_admin.py admin@goalup.com admin123 "Admin User"')
+    print("\n--- Create GoalUp Admin User ---")
+    email = input("Email: ").strip()
+    full_name = input("Full Name: ").strip()
+    password = getpass.getpass("Password: ")
+    
+    if not email or not full_name or not password:
+        print("Error: All fields are required.")
         sys.exit(1)
-    
-    email = sys.argv[1]
-    password = sys.argv[2]
-    full_name = sys.argv[3]
-    
+        
     create_admin_user(email, password, full_name)
