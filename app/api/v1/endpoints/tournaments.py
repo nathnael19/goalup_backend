@@ -4,9 +4,10 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.database import get_session
-from app.models.tournament import Tournament, TournamentCreate, TournamentRead, TournamentUpdate, TournamentReadWithTeams, TournamentScheduleCreate, TournamentKnockoutCreate
+from app.models.tournament import Tournament, TournamentCreate, TournamentRead, TournamentUpdate, TournamentReadWithTeams, TournamentScheduleCreate, TournamentKnockoutCreate, TournamentReadWithCompetition
 from app.models.match import Match, MatchStatus
 from app.api.v1.deps import get_current_tournament_admin, get_current_superuser, get_current_management_admin, get_current_active_user
+from sqlalchemy.orm import selectinload
 from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
 from app.core.supabase_client import get_signed_url
@@ -31,19 +32,31 @@ def create_tournament(
     
     return db_tournament.model_dump()
 
-@router.get("/", response_model=List[TournamentRead])
+@router.get("/", response_model=List[TournamentReadWithCompetition])
 def read_tournaments(
     *,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user)
 ):
+    query = select(Tournament).options(selectinload(Tournament.competition))
+    
     if current_user.role == UserRole.TOURNAMENT_ADMIN and current_user.tournament_id:
-        tournaments = session.exec(select(Tournament).where(Tournament.id == current_user.tournament_id)).all()
+        query = query.where(Tournament.id == current_user.tournament_id)
     elif current_user.role == UserRole.TOURNAMENT_ADMIN and current_user.competition_id:
-        tournaments = session.exec(select(Tournament).where(Tournament.competition_id == current_user.competition_id)).all()
-    else:
-        tournaments = session.exec(select(Tournament)).all()
-    return [t.model_dump() for t in tournaments]
+        query = query.where(Tournament.competition_id == current_user.competition_id)
+            
+    tournaments = session.exec(query).all()
+    
+    results = []
+    for t in tournaments:
+        t_dict = t.model_dump()
+        if t.competition:
+            comp_dict = t.competition.model_dump()
+            comp_dict["image_url"] = get_signed_url(t.competition.image_url)
+            t_dict["competition"] = comp_dict
+        results.append(t_dict)
+        
+    return results
 
 @router.get("/{tournament_id}", response_model=TournamentReadWithTeams)
 def read_tournament(
