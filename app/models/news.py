@@ -19,7 +19,7 @@ class NewsBase(SQLModel):
     image_url: Optional[str] = None
     team_id: Optional[uuid.UUID] = Field(default=None, foreign_key="team.id",ondelete="CASCADE")
     player_id: Optional[uuid.UUID] = Field(default=None, foreign_key="player.id",ondelete="CASCADE")
-    reporter_id: Optional[int] = Field(default=None, foreign_key="users.id", nullable=True)
+    reporter_id: Optional[uuid.UUID] = Field(default=None, foreign_key="users.id", nullable=True)
     is_published: bool = Field(default=True)
 
 
