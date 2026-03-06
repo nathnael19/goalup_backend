@@ -95,7 +95,7 @@ def read_users(
 def read_user(
     *, 
     session: Session = Depends(get_session), 
-    user_id: int,
+    user_id: uuid.UUID,
     current_user: User = Depends(get_current_superuser)
 ):
     """
@@ -110,7 +110,7 @@ def read_user(
 def update_user(
     *, 
     session: Session = Depends(get_session), 
-    user_id: int, 
+    user_id: uuid.UUID, 
     user_in: UserUpdate,
     current_user: User = Depends(get_current_superuser)
 ):
@@ -154,7 +154,7 @@ def update_user(
 def delete_user(
     *, 
     session: Session = Depends(get_session), 
-    user_id: int,
+    user_id: uuid.UUID,
     current_user: User = Depends(get_current_superuser)
 ):
     """
