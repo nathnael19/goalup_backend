@@ -10,12 +10,13 @@ class UserRole(str, Enum):
     NEWS_REPORTER = "NEWS_REPORTER"
     COACH = "COACH"
     REFEREE = "REFEREE"
+    VIEWER = "VIEWER"
 
 class User(SQLModel, table=True):
     """Admin user model for authentication."""
     __tablename__ = "users"
     
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: uuid.UUID = Field(primary_key=True)
     email: str = Field(unique=True, index=True, max_length=255)
     full_name: str = Field(max_length=255)
     hashed_password: str = Field(max_length=255)
@@ -45,7 +46,7 @@ class UserCreate(SQLModel):
     competition_id: Optional[uuid.UUID] = None
 
 class UserRead(SQLModel):
-    id: int
+    id: uuid.UUID
     email: str
     full_name: str
     is_active: bool
