@@ -126,6 +126,11 @@ def update_competition(
     if not db_competition:
         raise HTTPException(status_code=404, detail="Competition not found")
     competition_data = competition.model_dump(exclude_unset=True)
+    
+    # Prevent persisting signed URLs (absolute URLs)
+    if "image_url" in competition_data and competition_data["image_url"] and competition_data["image_url"].startswith("http"):
+        competition_data.pop("image_url")
+        
     for key, value in competition_data.items():
         setattr(db_competition, key, value)
     session.add(db_competition)
