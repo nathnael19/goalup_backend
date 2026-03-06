@@ -201,6 +201,10 @@ def update_team(
             
     team_data = team.model_dump(exclude_unset=True)
     
+    # Prevent persisting signed URLs (absolute URLs)
+    if "logo_url" in team_data and team_data["logo_url"] and team_data["logo_url"].startswith("http"):
+        team_data.pop("logo_url")
+        
     # Handle tournament update if present
     if "tournament_id" in team_data:
         new_tournament_id = team_data.pop("tournament_id")
