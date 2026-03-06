@@ -135,6 +135,10 @@ def update_player(
 
     player_data = player.model_dump(exclude_unset=True)
     
+    # Prevent persisting signed URLs (absolute URLs)
+    if "image_url" in player_data and player_data["image_url"] and player_data["image_url"].startswith("http"):
+        player_data.pop("image_url")
+        
     # RBAC: Coaches cannot edit player stats (goals, cards)
     if current_user.role == UserRole.COACH:
         for stat_field in ["goals", "yellow_cards", "red_cards"]:
