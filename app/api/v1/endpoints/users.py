@@ -1,6 +1,6 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from sqlmodel import Session, select
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Response
+from sqlmodel import Session, select, func
 from app.core.database import get_session
 from app.models.user import User, UserCreate, UserRead, UserUpdate, UserRole
 from app.core.config import settings
@@ -83,17 +83,24 @@ def read_users(
     role: Optional[UserRole] = None,
     offset: int = 0,
     limit: int = 100,
+    response: Response = None,
 ):
     """List all users. Supports role filtering."""
-    statement = select(User)
+    statement = select(User).where(User.is_deleted == False)  # type: ignore[comparison-overlap]
     if role:
         statement = statement.where(User.role == role)
+    total = session.exec(
+        select(func.count()).select_from(statement.subquery())
+    ).one()
+
     users = session.exec(statement.offset(offset).limit(limit)).all()
     result = []
     for u in users:
         u_dict = u.model_dump()
         u_dict["profile_image_url"] = get_signed_url(u.profile_image_url)
         result.append(u_dict)
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total)
     return result
 
 
@@ -184,7 +191,9 @@ def delete_user(
         description=f"Super Admin deleted user {db_user.email}",
     )
 
-    session.delete(db_user)
+    db_user.is_deleted = True
+    db_user.is_active = False
+    session.add(db_user)
     session.commit()
 
     return {"ok": True}
