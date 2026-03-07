@@ -6,8 +6,12 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "GoalUp!"
     API_V1_STR: str = "/api/v1"
 
-    # Neon Postgres connection string (primary data store)
+    # Neon Postgres connection strings
+    # Primary URL (used by default / in production)
     DATABASE_URL: str
+    # Optional overrides for specific environments
+    DATABASE_URL_DEV: Optional[str] = None
+    DATABASE_URL_TEST: Optional[str] = None
 
     SUPABASE_PROJECT_URL: str
     SUPABASE_PUBLISHABLE_KEY: str
@@ -24,7 +28,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "production"  # "development", "production"
 
     # CORS — comma-separated list of allowed origins, e.g. "https://goalup.webcode.codes,http://localhost:5173"
-    ALLOWED_ORIGINS: str = "http://localhost:5173,https://goalup.webcode.codes"
+    ALLOWED_ORIGINS: str = "http://localhost:5173,https://goalup.webcode.codes,"
 
     # Admin frontend URL used in invitation emails
     ADMIN_FRONTEND_URL: str = "https://goalup.webcode.codes"
@@ -44,6 +48,8 @@ class Settings(BaseSettings):
     MAIL_SSL_TLS: bool = False
     USE_REAL_MAIL: bool = False
     RESEND_API_KEY: Optional[str] = None
+    # Optional webhook for push-style notifications (e.g. to another service)
+    PUSH_WEBHOOK_URL: Optional[str] = None
 
     @validator("MAIL_USERNAME", "MAIL_PASSWORD", "MAIL_FROM", pre=True)
     def empty_string_to_none(cls, v):
