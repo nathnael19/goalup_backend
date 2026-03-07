@@ -6,9 +6,11 @@ from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlmodel import Session, select
+from datetime import datetime, timedelta, timezone
 from app.core.config import settings
 from app.core.database import get_session
 from app.models.user import User, UserRead, UserUpdate
+from app.models.refresh_token import RefreshToken
 from app.api.v1.deps import get_current_active_user, get_current_user_optional
 from app.core.audit import record_audit_log
 from app.core.email import send_reset_password_email
@@ -56,6 +58,17 @@ def login(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+        if user.is_deleted:
+            raise HTTPException(status_code=400, detail="User account has been deleted")
+
+        # Account lockout check
+        now = datetime.now(timezone.utc)
+        if user.lockout_until and now < user.lockout_until:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account locked due to repeated failed logins. Try again later.",
+            )
+
         if not user.is_active:
             raise HTTPException(status_code=400, detail="Inactive user")
 
@@ -67,14 +80,28 @@ def login(
             )
 
         if not verify_password(password, user.hashed_password):
+            # increment failed attempts and lockout if threshold reached
+            user.failed_login_attempts += 1
+            if user.failed_login_attempts >= 5:
+                user.lockout_until = now + timedelta(minutes=15)
+            session.add(user)
+            session.commit()
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
+        # successful login -> reset counters
+        user.failed_login_attempts = 0
+        user.lockout_until = None
+        session.add(user)
+
         access_token = create_access_token({"sub": str(user.id)})
         refresh_token = create_refresh_token(str(user.id))
+
+        # Persist login state changes
+        session.commit()
 
         user_dict = user.model_dump()
         user_dict["profile_image_url"] = get_signed_url(user.profile_image_url)
@@ -115,6 +142,7 @@ def refresh_token(
                 detail="Invalid or expired refresh token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        jti = payload.get("jti")
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(
@@ -130,6 +158,24 @@ def refresh_token(
                 detail="Invalid or expired refresh token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        # Check token record / revocation
+        if not jti:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        token_record = db_session.exec(
+            select(RefreshToken).where(RefreshToken.jti == jti)
+        ).first()
+        if not token_record or token_record.revoked:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         user = db_session.get(User, user_int_id)
         if not user or not user.is_active:
             raise HTTPException(status_code=401, detail="User not found or inactive")
@@ -137,6 +183,24 @@ def refresh_token(
         access_token = create_access_token({"sub": str(user.id)})
         # rotate refresh token to reduce replay risk
         refresh_token_new = create_refresh_token(str(user.id))
+
+        # revoke old token and store new one
+        token_record.revoked = True
+        token_record.revoked_at = datetime.now(timezone.utc)
+        db_session.add(token_record)
+
+        new_payload = decode_refresh_token(refresh_token_new) or {}
+        new_jti = new_payload.get("jti")
+        exp_ts = new_payload.get("exp")
+        if new_jti and exp_ts:
+            expires_at = datetime.fromtimestamp(exp_ts, tz=timezone.utc)
+            db_session.add(
+                RefreshToken(
+                    jti=new_jti,
+                    user_id=user.id,
+                    expires_at=expires_at,
+                )
+            )
 
         user_dict = user.model_dump()
         user_dict["profile_image_url"] = get_signed_url(user.profile_image_url)
