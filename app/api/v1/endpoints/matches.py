@@ -188,8 +188,9 @@ def update_match(
     # Lock match data if finished for > 1 hour
     if db_match.status == "finished" and db_match.finished_at:
         import datetime
+        from datetime import timezone as _tz
         lock_time = db_match.finished_at + datetime.timedelta(hours=1)
-        if datetime.datetime.now() > lock_time:
+        if datetime.datetime.now(tz=_tz.utc) > lock_time:
             raise HTTPException(
                 status_code=403, 
                 detail="Match data is locked and cannot be changed after 1 hour of completion"
@@ -200,7 +201,8 @@ def update_match(
     # Auto-set finished_at when status becomes finished
     if match_data.get("status") == "finished" and db_match.status != "finished":
         import datetime
-        match_data["finished_at"] = datetime.datetime.now()
+        from datetime import timezone as _tz
+        match_data["finished_at"] = datetime.datetime.now(tz=_tz.utc)
 
     # Validate lineup before starting match
     if match_data.get("status") == "live" and db_match.status != "live":
