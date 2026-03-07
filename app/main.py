@@ -3,6 +3,7 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from starlette.websockets import WebSocket, WebSocketDisconnect
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -10,8 +11,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
 from app.core.database import create_db_and_tables
+from app.core.security import decode_access_token
+from app.core.realtime import realtime_manager, ConnectionInfo
+from app.core.database import engine
+from app.models.user import User
+from sqlmodel import Session
 import logging
 import os
+import time
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -39,6 +46,36 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             )
         return response
 
+
+class RealtimeBroadcastMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+
+        # Phase 1: broadcast an `entity_changed` event after successful mutations.
+        if request.url.path.startswith(settings.API_V1_STR):
+            if request.method in ("POST", "PUT", "PATCH", "DELETE") and 200 <= response.status_code < 300:
+                rel_path = request.url.path[len(settings.API_V1_STR):].lstrip("/")
+                entity = (rel_path.split("/", 1)[0] or "unknown").lower()
+                action = {
+                    "POST": "created",
+                    "PUT": "updated",
+                    "PATCH": "updated",
+                    "DELETE": "deleted",
+                }.get(request.method, "updated")
+                await realtime_manager.broadcast(
+                    {
+                        "type": "entity_changed",
+                        "entity": entity,
+                        "action": action,
+                        "id": None,
+                        "path": request.url.path,
+                        "method": request.method,
+                        "status": response.status_code,
+                    }
+                )
+
+        return response
+
 # ─── App ──────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -54,6 +91,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # 1. Security Headers (innermost — runs on every response)
 app.add_middleware(SecurityHeadersMiddleware)
+
+# 1b. Realtime broadcast (after successful mutations)
+app.add_middleware(RealtimeBroadcastMiddleware)
 
 # 2. CORS
 app.add_middleware(
@@ -89,6 +129,52 @@ def on_startup():
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# ─── WebSocket (Realtime) ──────────────────────────────────────────────────────
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    token: str | None = websocket.query_params.get("token")
+    if not token:
+        auth_header = websocket.headers.get("authorization") or ""
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+
+    role = "PUBLIC"
+    user_id = 0
+
+    if token:
+        payload = decode_access_token(token)
+        if not payload or not payload.get("sub"):
+            await websocket.close(code=1008)
+            return
+        try:
+            user_id = int(payload["sub"])
+        except Exception:
+            await websocket.close(code=1008)
+            return
+
+        with Session(engine) as session:
+            user = session.get(User, user_id)
+            if not user or not user.is_active:
+                await websocket.close(code=1008)
+                return
+            role = str(user.role)
+
+    await websocket.accept()
+    await realtime_manager.connect(
+        websocket,
+        ConnectionInfo(user_id=user_id, role=role, connected_at=time.time()),
+    )
+
+    try:
+        while True:
+            msg = await websocket.receive_text()
+            if msg == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await realtime_manager.disconnect(websocket)
 
 # ─── Static Files ─────────────────────────────────────────────────────────────
 if not os.path.exists("static"):
