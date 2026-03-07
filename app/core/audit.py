@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlmodel import Session
 from app.models.audit_log import AuditLog
 
@@ -17,7 +17,7 @@ def record_audit_log(
         entity_type=entity_type,
         entity_id=entity_id,
         description=description,
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
     )
     session.add(db_log)
     # We don't commit here to allow it to be part of the caller's transaction
