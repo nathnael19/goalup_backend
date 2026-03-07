@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
-from datetime import datetime
+from datetime import datetime, timezone
 from app.core.database import get_session
 from app.models.news import News, NewsCreate, NewsRead, NewsUpdate, NewsCategory
 from app.api.v1.deps import get_current_news_reporter, get_current_superuser
@@ -124,7 +124,7 @@ def update_news(
     if not db_news:
         raise HTTPException(status_code=404, detail="News article not found")
     news_data = news.model_dump(exclude_unset=True)
-    news_data["updated_at"] = datetime.utcnow()
+    news_data["updated_at"] = datetime.now(timezone.utc)
     for key, value in news_data.items():
         setattr(db_news, key, value)
     session.add(db_news)
