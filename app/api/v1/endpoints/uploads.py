@@ -13,17 +13,26 @@ async def upload_file(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_active_user)
 ):
-    # Validate file type (simple check)
+    # Validate file type & size
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
+    allowed_types = {"image/jpeg", "image/png", "image/webp"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported image type. Allowed: JPEG, PNG, WebP",
+        )
     
     try:
         # Generate unique filename
         file_extension = os.path.splitext(file.filename)[1]
         unique_filename = f"{uuid.uuid4()}{file_extension}"
         
-        # Read file content
+        # Read file content (enforce max size ~5MB)
         content = await file.read()
+        max_bytes = 5 * 1024 * 1024
+        if len(content) > max_bytes:
+            raise HTTPException(status_code=400, detail="Image is too large (max 5MB)")
         
         # Upload to Supabase Storage
         path = unique_filename
