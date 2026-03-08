@@ -1,8 +1,8 @@
 from datetime import datetime
 from typing import Optional
+import uuid
 from enum import Enum
 from sqlmodel import Field, SQLModel
-import uuid
 
 class UserRole(str, Enum):
     SUPER_ADMIN = "SUPER_ADMIN"
@@ -13,14 +13,15 @@ class UserRole(str, Enum):
     VIEWER = "VIEWER"
 
 class User(SQLModel, table=True):
-    """Admin user profile — auth lives in Supabase Auth, this holds app-specific data."""
+    """Admin user profile — credentials managed locally."""
     __tablename__ = "users"
-    
-    # ID must match the Supabase Auth user UUID
-    id: uuid.UUID = Field(primary_key=True)
+
+    # Neon schema uses SERIAL/INTEGER PK
+    id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(unique=True, index=True, max_length=255)
     full_name: str = Field(max_length=255)
-    # hashed_password removed — Supabase Auth manages credentials
+    # DB column is NOT NULL; empty string means "password not set yet"
+    hashed_password: str = Field(default="", max_length=255)
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
     role: UserRole = Field(default=UserRole.REFEREE)
@@ -47,7 +48,7 @@ class UserCreate(SQLModel):
     competition_id: Optional[uuid.UUID] = None
 
 class UserRead(SQLModel):
-    id: uuid.UUID
+    id: int
     email: str
     full_name: str
     is_active: bool
@@ -57,8 +58,8 @@ class UserRead(SQLModel):
     tournament_id: Optional[uuid.UUID] = None
     competition_id: Optional[uuid.UUID] = None
     profile_image_url: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 class UserUpdate(SQLModel):
     email: Optional[str] = None
