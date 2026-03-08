@@ -1,4 +1,3 @@
-from datetime import timedelta
 import logging
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status, BackgroundTasks
@@ -12,7 +11,16 @@ from app.core.database import get_session
 from app.models.user import User, UserRead, UserUpdate
 from app.api.v1.deps import get_current_active_user, get_current_user_optional
 from app.core.audit import record_audit_log
-from app.core.supabase import supabase
+from app.core.email import send_reset_password_email
+from app.core.security import (
+    verify_password,
+    get_password_hash,
+    create_access_token,
+    create_refresh_token,
+    decode_refresh_token,
+    create_password_reset_token,
+    verify_password_reset_token,
+)
 
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
@@ -27,37 +35,49 @@ def login(
     session: Session = Depends(get_session)
 ):
     """
-    OAuth2 compatible token login, authenticate with Supabase Auth.
+    OAuth2 compatible token login using local DB credentials.
     """
     try:
-        # Authenticate with Supabase
-        auth_response = supabase.auth.sign_in_with_password({
-            "email": form_data.username,
-            "password": form_data.password
-        })
-
-        if not auth_response.user:
+        email = (form_data.username or "").strip().lower()
+        password = form_data.password or ""
+        if not email or not password:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # Get user from our public.users table to check active status and role
-        user_id = auth_response.user.id
-        statement = select(User).where(User.id == user_id)
-        user = session.exec(statement).first()
-
+        user = session.exec(select(User).where(User.email == email)).first()
         if not user:
-            raise HTTPException(status_code=404, detail="User profile not found")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
         if not user.is_active:
             raise HTTPException(status_code=400, detail="Inactive user")
 
+        if not user.hashed_password:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Password not set. Please use your invitation link to set a password.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        if not verify_password(password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        access_token = create_access_token({"sub": str(user.id)})
+        refresh_token = create_refresh_token(str(user.id))
         return {
-            "access_token": auth_response.session.access_token,
+            "access_token": access_token,
             "token_type": "bearer",
-            "refresh_token": auth_response.session.refresh_token,
+            "refresh_token": refresh_token,
             "user": user
         }
     except HTTPException:
@@ -84,22 +104,39 @@ def refresh_token(
     Exchange a refresh token for a new access token. No auth required.
     """
     try:
-        response = supabase.auth.refresh_session(refresh_token=data.refresh_token)
-        if not response.session:
+        payload = decode_refresh_token(data.refresh_token)
+        if not payload:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired refresh token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        session_obj = response.session
-        user_id = session_obj.user.id
-        user = db_session.exec(select(User).where(User.id == user_id)).first()
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        try:
+            user_int_id = int(user_id)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        user = db_session.get(User, user_int_id)
         if not user or not user.is_active:
             raise HTTPException(status_code=401, detail="User not found or inactive")
+
+        access_token = create_access_token({"sub": str(user.id)})
+        # rotate refresh token to reduce replay risk
+        refresh_token_new = create_refresh_token(str(user.id))
         return {
-            "access_token": session_obj.access_token,
+            "access_token": access_token,
             "token_type": "bearer",
-            "refresh_token": session_obj.refresh_token,
+            "refresh_token": refresh_token_new,
             "user": user
         }
     except HTTPException:
@@ -136,23 +173,20 @@ def update_user_me(
     update_data = user_in.model_dump(exclude_unset=True)
 
     # Do not allow users to change their own role or active status via this endpoint
-    for field in ["role", "is_active", "is_superuser", "current_password"]:
+    for field in ["role", "is_active", "is_superuser"]:
         if field in update_data:
             del update_data[field]
 
-    # Handle password change via Supabase Auth Admin API
+    # Handle password change locally (require current password if already set)
     if "password" in update_data:
-        new_password = update_data.pop("password")
-        try:
-            supabase.auth.admin.update_user_by_id(
-                str(current_user.id),
-                {"password": new_password}
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to update password: {str(e)}"
-            )
+        new_password = str(update_data.pop("password") or "")
+        current_password = user_in.current_password
+        if current_user.hashed_password:
+            if not current_password or not verify_password(current_password, current_user.hashed_password):
+                raise HTTPException(status_code=400, detail="Current password is incorrect")
+        if len(new_password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters long")
+        current_user.hashed_password = get_password_hash(new_password)
 
     for key, value in update_data.items():
         setattr(current_user, key, value)
@@ -179,21 +213,24 @@ class ForgotPasswordRequest(BaseModel):
 
 @router.post("/forgot-password")
 @limiter.limit("3/minute")
-def forgot_password(
+async def forgot_password(
     request: Request,
     data: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    session: Session = Depends(get_session),
 ):
     """
-    Request a password reset email via Supabase Auth.
-    Supabase sends the reset email with a link pointing to ADMIN_FRONTEND_URL/reset-password.
+    Request a password reset email.
+    Always returns success to prevent account enumeration.
     """
     try:
-        supabase.auth.reset_password_for_email(
-            data.email,
-            options={
-                "redirect_to": f"{settings.ADMIN_FRONTEND_URL}/reset-password"
-            }
-        )
+        email = (data.email or "").strip().lower()
+        if email:
+            user = session.exec(select(User).where(User.email == email)).first()
+            if user and user.is_active:
+                reset_token = create_password_reset_token(email, expires_hours=2)
+                reset_link = f"{settings.ADMIN_FRONTEND_URL}/reset-password?token={reset_token}"
+                background_tasks.add_task(send_reset_password_email, email, reset_link)
     except Exception as e:
         # Log but always return success to prevent account enumeration
         logger.warning(f"Password reset request failed for {data.email}: {e}")
@@ -212,23 +249,24 @@ def setup_password(
     session: Session = Depends(get_session)
 ):
     """
-    Set initial password using the Supabase invite token.
-    The frontend exchanges the OTP token for a session and then calls this endpoint.
+    Set initial password using our invitation token (JWT from `create_password_reset_token`).
     """
     try:
-        # Exchange the invite OTP token for a session
-        session_response = supabase.auth.exchange_code_for_session({
-            "auth_code": data.token
-        })
-        if not session_response.user:
+        email = verify_password_reset_token(data.token)
+        if not email:
+            raise HTTPException(status_code=400, detail="Invalid or expired setup token")
+        user = session.exec(select(User).where(User.email == email)).first()
+        if not user or not user.is_active:
             raise HTTPException(status_code=400, detail="Invalid or expired setup token")
 
-        user_id = session_response.user.id
-        # Update password via Admin API
-        supabase.auth.admin.update_user_by_id(
-            user_id,
-            {"password": data.password}
-        )
+        if user.hashed_password:
+            raise HTTPException(status_code=400, detail="Password is already set. Please log in.")
+        if len(data.password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters long")
+
+        user.hashed_password = get_password_hash(data.password)
+        session.add(user)
+        session.commit()
     except HTTPException:
         raise
     except Exception as e:
@@ -254,30 +292,23 @@ def reset_password(
     session: Session = Depends(get_session)
 ):
     """
-    Reset password using the Supabase reset token from the email link.
-    The frontend exchanges the OTP and then calls this endpoint.
+    Reset password using our reset token (JWT from `create_password_reset_token`).
     """
     try:
-        # Exchange the OTP token from the email link for a session
-        session_response = supabase.auth.exchange_code_for_session({
-            "auth_code": data.token
-        })
-        if not session_response.user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired reset token"
-            )
+        email = verify_password_reset_token(data.token)
+        if not email:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        user = session.exec(select(User).where(User.email == email)).first()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+        if len(data.new_password) < 6:
+            raise HTTPException(status_code=400, detail="Password must be at least 6 characters long")
 
-        user_id = session_response.user.id
-        # Update password via Admin API
-        supabase.auth.admin.update_user_by_id(
-            user_id,
-            {"password": data.new_password}
-        )
+        user.hashed_password = get_password_hash(data.new_password)
+        session.add(user)
+        session.commit()
 
         # Audit log
-        statement = select(User).where(User.id == user_id)
-        user = session.exec(statement).first()
         if user:
             record_audit_log(
                 session,
@@ -305,11 +336,6 @@ def logout(
     current_user: User | None = Depends(get_current_user_optional)
 ):
     """
-    Log out from Supabase. Auth is optional so expired tokens can still "logout" (frontend clears state).
+    Stateless logout for JWT. Auth is optional so expired tokens can still "logout" (frontend clears state).
     """
-    if current_user:
-        try:
-            supabase.auth.sign_out()
-        except Exception as e:
-            logger.error(f"Logout failed: {e}")
     return {"message": "Successfully logged out"}
