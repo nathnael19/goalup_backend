@@ -71,7 +71,8 @@ def create_team(
     # We already have tournament from above
     res = db_team.model_dump()
     res["logo_url"] = get_signed_url(db_team.logo_url)
-    res["tournament"] = tournament
+    # Ensure nested models are JSON-serializable (avoid returning ORM objects)
+    res["tournament"] = TournamentReadWithCompetition.model_validate(tournament).model_dump()
     return res
 
     
@@ -108,7 +109,7 @@ def read_teams(
     for t in teams:
         tt = TeamReadWithTournament.model_validate(t)
         if t.tournament_id and t.tournament_id in tournaments_map:
-            tt.tournament = tournaments_map[t.tournament_id]
+            tt.tournament = TournamentRead.model_validate(tournaments_map[t.tournament_id])
         
         tt_dict = tt.model_dump()
         tt_dict["logo_url"] = signed_urls.get(t.logo_url, "") if t.logo_url else ""
