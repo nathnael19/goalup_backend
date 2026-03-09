@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.database import get_session
 from app.models.user import User, UserRead, UserUpdate
-from app.api.v1.deps import get_current_active_user
+from app.api.v1.deps import get_current_active_user, get_current_user_optional
 from app.core.audit import record_audit_log
 from app.core.supabase import supabase
 
@@ -67,6 +67,48 @@ def login(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/refresh")
+def refresh_token(
+    data: RefreshTokenRequest,
+    db_session: Session = Depends(get_session)
+):
+    """
+    Exchange a refresh token for a new access token. No auth required.
+    """
+    try:
+        response = supabase.auth.refresh_session(refresh_token=data.refresh_token)
+        if not response.session:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        session_obj = response.session
+        user_id = session_obj.user.id
+        user = db_session.exec(select(User).where(User.id == user_id)).first()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=401, detail="User not found or inactive")
+        return {
+            "access_token": session_obj.access_token,
+            "token_type": "bearer",
+            "refresh_token": session_obj.refresh_token,
+            "user": user
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Token refresh failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -260,15 +302,14 @@ def reset_password(
 
 @router.post("/logout")
 def logout(
-    current_user: User = Depends(get_current_active_user)
+    current_user: User | None = Depends(get_current_user_optional)
 ):
     """
-    Log out from Supabase.
+    Log out from Supabase. Auth is optional so expired tokens can still "logout" (frontend clears state).
     """
-    try:
-        supabase.auth.sign_out()
-    except Exception as e:
-        logger.error(f"Logout failed: {e}")
-        # Even if Supabase signout fails (e.g. token expired), we've cleared our intent
-    
+    if current_user:
+        try:
+            supabase.auth.sign_out()
+        except Exception as e:
+            logger.error(f"Logout failed: {e}")
     return {"message": "Successfully logged out"}
