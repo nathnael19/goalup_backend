@@ -1,14 +1,14 @@
 import uuid
-from typing import List
+from typing import List, Optional
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session, select
 from app.core.database import get_session
-from app.core.security import decode_access_token
 from app.models.user import User, UserRole
 from app.core.supabase import supabase
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"/api/v1/auth/login")
+optional_bearer = HTTPBearer(auto_error=False)
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
@@ -30,11 +30,28 @@ def get_current_user(
         user_id = uuid.UUID(user_response.user.id)
         user = session.get(User, user_id)
         if user is None:
-            # If user exists in Auth but not in our table, session might be out of sync
+            print(f"DEBUG: User {user_id} not found in public.users table")
             raise credentials_exception
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is (includes credentials_exception above)
+        raise
     except Exception as e:
-        # logger.error(f"Auth verification failed: {e}")
-        raise credentials_exception
+        error_str = str(e).lower()
+        print(f"DEBUG: Auth verification failed with error: {str(e)}")
+        # Distinguish between an invalid/expired token vs a transient Supabase error.
+        # Token-related errors → 401 so the frontend can handle re-auth.
+        # Network/server errors → 503 so the frontend does NOT treat this as an
+        # auth failure and incorrectly log the user out.
+        is_auth_error = any(
+            keyword in error_str
+            for keyword in ("invalid", "expired", "jwt", "unauthorized", "token")
+        )
+        if is_auth_error:
+            raise credentials_exception
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication service temporarily unavailable",
+        )
     
     return user
 
@@ -45,6 +62,30 @@ def get_current_active_user(
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
+
+
+def get_current_user_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_bearer),
+    session: Session = Depends(get_session)
+) -> Optional[User]:
+    """Return current user if valid token provided, else None. Used for logout when token may be expired."""
+    if not credentials:
+        return None
+    token = credentials.credentials
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        user_response = supabase.auth.get_user(token)
+        if not user_response.user:
+            return None
+        user_id = uuid.UUID(user_response.user.id)
+        user = session.get(User, user_id)
+        return user if user else None
+    except Exception:
+        return None
 
 def get_current_superuser(
     current_user: User = Depends(get_current_active_user)
