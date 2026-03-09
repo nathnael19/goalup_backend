@@ -53,15 +53,18 @@ def create_admin_user(email: str, password: str, full_name: str):
         
         user_id = user_response.user.id
         
-        # Note: The handle_new_user trigger automatically inserts the user into public.users.
-        # Now update the created public.users record to be a super admin.
-        print("Upgrading user role to SUPER_ADMIN...")
-        supabase.table('users').update({
+        # Explicitly upsert the user into public.users table to ensure sync exists
+        print("Ensuring user profile exists in public.users...")
+        supabase.table('users').upsert({
+            'id': user_id,
+            'email': email,
+            'full_name': full_name,
+            'is_active': True,
             'is_superuser': True,
             'role': 'SUPER_ADMIN'
-        }).eq('id', user_id).execute()
+        }).execute()
         
-        print(f"✅ Admin user created successfully!")
+        print(f"✅ Admin user created and synced successfully!")
         print(f"   Email: {email}")
         print(f"   Name: {full_name}")
         print(f"   ID: {user_id}")
