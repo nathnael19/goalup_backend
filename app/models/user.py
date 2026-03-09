@@ -13,13 +13,14 @@ class UserRole(str, Enum):
     VIEWER = "VIEWER"
 
 class User(SQLModel, table=True):
-    """Admin user model for authentication."""
+    """Admin user profile — auth lives in Supabase Auth, this holds app-specific data."""
     __tablename__ = "users"
     
+    # ID must match the Supabase Auth user UUID
     id: uuid.UUID = Field(primary_key=True)
     email: str = Field(unique=True, index=True, max_length=255)
     full_name: str = Field(max_length=255)
-    hashed_password: str = Field(max_length=255)
+    # hashed_password removed — Supabase Auth manages credentials
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
     role: UserRole = Field(default=UserRole.REFEREE)
