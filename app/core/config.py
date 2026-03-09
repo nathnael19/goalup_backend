@@ -5,14 +5,20 @@ from pydantic import validator
 class Settings(BaseSettings):
     PROJECT_NAME: str = "GoalUp!"
     API_V1_STR: str = "/api/v1"
-    DATABASE_URL: str
+
+    # Supabase Postgres connection string (Session/Transaction pooler URL)
+    SUPABASE_DB_URL: str
+
     SUPABASE_PROJECT_URL: str
     SUPABASE_PUBLISHABLE_KEY: str
     SUPABASE_SERVICE_ROLE_KEY: str
     SUPABASE_BUCKET_NAME: str = "uploads"
+
+    # Legacy SECRET_KEY — kept for signing custom tokens (invitations, etc.)
     SECRET_KEY: str
-    
-    # JWT Settings
+
+    # JWT Settings — Supabase tokens are HS256 signed with SUPABASE_JWT_SECRET,
+    # but we rely on supabase.auth.get_user() to verify, not manual decode.
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200  # 30 days
     ENVIRONMENT: str = "production"  # "development", "production"
