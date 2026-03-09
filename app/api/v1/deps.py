@@ -1,3 +1,4 @@
+import uuid
 from typing import List
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -5,10 +6,9 @@ from sqlmodel import Session, select
 from app.core.database import get_session
 from app.core.security import decode_access_token
 from app.models.user import User, UserRole
+from app.core.supabase import supabase
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"/api/v1/auth/login")
-
-from app.core.supabase import supabase
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
