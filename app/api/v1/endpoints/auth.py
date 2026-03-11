@@ -12,6 +12,7 @@ from app.models.user import User, UserRead, UserUpdate
 from app.api.v1.deps import get_current_active_user, get_current_user_optional
 from app.core.audit import record_audit_log
 from app.core.email import send_reset_password_email
+from app.core.supabase_client import get_signed_url
 from app.core.security import (
     verify_password,
     get_password_hash,
@@ -74,11 +75,14 @@ def login(
 
         access_token = create_access_token({"sub": str(user.id)})
         refresh_token = create_refresh_token(str(user.id))
+
+        user_dict = user.model_dump()
+        user_dict["profile_image_url"] = get_signed_url(user.profile_image_url)
         return {
             "access_token": access_token,
             "token_type": "bearer",
             "refresh_token": refresh_token,
-            "user": user
+            "user": user_dict
         }
     except HTTPException:
         raise
@@ -133,11 +137,14 @@ def refresh_token(
         access_token = create_access_token({"sub": str(user.id)})
         # rotate refresh token to reduce replay risk
         refresh_token_new = create_refresh_token(str(user.id))
+
+        user_dict = user.model_dump()
+        user_dict["profile_image_url"] = get_signed_url(user.profile_image_url)
         return {
             "access_token": access_token,
             "token_type": "bearer",
             "refresh_token": refresh_token_new,
-            "user": user
+            "user": user_dict
         }
     except HTTPException:
         raise
@@ -157,7 +164,9 @@ def read_users_me(
     """
     Get current authenticated user.
     """
-    return current_user
+    user_dict = current_user.model_dump()
+    user_dict["profile_image_url"] = get_signed_url(current_user.profile_image_url)
+    return user_dict
 
 
 @router.patch("/me", response_model=UserRead)
@@ -204,7 +213,9 @@ def update_user_me(
 
     session.commit()
     session.refresh(current_user)
-    return current_user
+    user_dict = current_user.model_dump()
+    user_dict["profile_image_url"] = get_signed_url(current_user.profile_image_url)
+    return user_dict
 
 
 class ForgotPasswordRequest(BaseModel):
