@@ -5,55 +5,41 @@ from fastapi.security import OAuth2PasswordBearer, HTTPAuthorizationCredentials,
 from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.user import User, UserRole
-from app.core.supabase import supabase
+from app.core.security import decode_access_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"/api/v1/auth/login")
 optional_bearer = HTTPBearer(auto_error=False)
+
 
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     session: Session = Depends(get_session)
 ) -> User:
-    """Get current authenticated user by verifying token with Supabase Auth."""
+    """Get current authenticated user by verifying our custom JWT."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
+    payload = decode_access_token(token)
+    if not payload:
+        raise credentials_exception
+
+    user_id_str: str | None = payload.get("sub")
+    if not user_id_str:
+        raise credentials_exception
     try:
-        # Verify token with Supabase
-        user_response = supabase.auth.get_user(token)
-        if not user_response.user:
-            raise credentials_exception
-            
-        user_id = uuid.UUID(user_response.user.id)
-        user = session.get(User, user_id)
-        if user is None:
-            print(f"DEBUG: User {user_id} not found in public.users table")
-            raise credentials_exception
-    except HTTPException:
-        # Re-raise HTTP exceptions as-is (includes credentials_exception above)
-        raise
-    except Exception as e:
-        error_str = str(e).lower()
-        print(f"DEBUG: Auth verification failed with error: {str(e)}")
-        # Distinguish between an invalid/expired token vs a transient Supabase error.
-        # Token-related errors → 401 so the frontend can handle re-auth.
-        # Network/server errors → 503 so the frontend does NOT treat this as an
-        # auth failure and incorrectly log the user out.
-        is_auth_error = any(
-            keyword in error_str
-            for keyword in ("invalid", "expired", "jwt", "unauthorized", "token")
-        )
-        if is_auth_error:
-            raise credentials_exception
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication service temporarily unavailable",
-        )
-    
+        user_id = int(user_id_str)
+    except Exception:
+        raise credentials_exception
+
+    user = session.get(User, user_id)
+    if user is None:
+        raise credentials_exception
+
     return user
+
 
 def get_current_active_user(
     current_user: User = Depends(get_current_user)
@@ -68,24 +54,20 @@ def get_current_user_optional(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_bearer),
     session: Session = Depends(get_session)
 ) -> Optional[User]:
-    """Return current user if valid token provided, else None. Used for logout when token may be expired."""
+    """Return current user if valid token provided, else None."""
     if not credentials:
         return None
-    token = credentials.credentials
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    payload = decode_access_token(credentials.credentials)
+    if not payload:
+        return None
+    user_id_str = payload.get("sub")
+    if not user_id_str:
+        return None
     try:
-        user_response = supabase.auth.get_user(token)
-        if not user_response.user:
-            return None
-        user_id = uuid.UUID(user_response.user.id)
-        user = session.get(User, user_id)
-        return user if user else None
+        return session.get(User, int(user_id_str))
     except Exception:
         return None
+
 
 def get_current_superuser(
     current_user: User = Depends(get_current_active_user)
@@ -97,6 +79,7 @@ def get_current_superuser(
             detail="The user doesn't have enough privileges"
         )
     return current_user
+
 
 class RoleChecker:
     """Dependency for checking if current user has one of the allowed roles."""
@@ -110,6 +93,7 @@ class RoleChecker:
                 detail=f"The user role '{current_user.role}' is not allowed to perform this action. Required: {self.allowed_roles}"
             )
         return current_user
+
 
 # Helper dependencies
 get_current_coach = RoleChecker([UserRole.COACH])
