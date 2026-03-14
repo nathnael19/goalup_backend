@@ -42,6 +42,9 @@ class User(SQLModel, table=True):
     failed_login_attempts: int = Field(default=0)
     lockout_until: Optional[datetime] = Field(default=None, nullable=True)
     is_deleted: bool = Field(default=False)
+    
+    # Ownership tracking
+    created_by_id: Optional[int] = Field(default=None, nullable=True)
 
 class UserCreate(SQLModel):
     email: str = Field(unique=True, index=True, max_length=255)
@@ -72,6 +75,7 @@ class UserRead(SQLModel):
     profile_image_url: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    created_by_id: Optional[int] = None
 
 class UserUpdate(SQLModel):
     email: Optional[str] = None
