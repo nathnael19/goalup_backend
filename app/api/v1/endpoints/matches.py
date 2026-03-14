@@ -73,6 +73,7 @@ def read_matches(
     session: Session = Depends(get_session), 
     offset: int = 0, 
     limit: int = 100,
+    current_user: User = Depends(get_current_active_user),
     tournament_id: Optional[uuid.UUID] = None,
 ):
     try:
@@ -88,6 +89,9 @@ def read_matches(
             selectinload(Match.substitutions).selectinload(Substitution.player_out),
             selectinload(Match.referee),
         )
+
+        if current_user.role == UserRole.REFEREE:
+            query = query.where(Match.referee_id == current_user.id)
 
         if tournament_id:
             query = query.where(Match.tournament_id == tournament_id)
@@ -126,6 +130,7 @@ def read_match(
     *, 
     session: Session = Depends(get_session), 
     match_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_user),
 ):
     try:
         query = select(Match).where(Match.id == match_id).options(
@@ -138,12 +143,17 @@ def read_match(
             selectinload(Match.cards_list).selectinload(Card.player),
             selectinload(Match.substitutions).selectinload(Substitution.player_in),
             selectinload(Match.substitutions).selectinload(Substitution.player_out),
+            selectinload(Match.referee),
         )
         # ... rest of the logic
         query = query.where(Match.id == match_id)
         match = session.exec(query).first()
         if not match:
             raise HTTPException(status_code=404, detail="Match not found")
+
+        # RBAC Check: Referees can only view matches they are assigned to
+        if current_user.role == UserRole.REFEREE and match.referee_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Referees can only view matches they are assigned to")
 
         em = EnrichedMatchRead.model_validate(match)
         if match.tournament:
