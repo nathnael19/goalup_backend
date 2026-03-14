@@ -103,13 +103,13 @@ def login(
         # Persist login state changes
         session.commit()
 
-        user_dict = user.model_dump()
-        user_dict["profile_image_url"] = get_signed_url(user.profile_image_url)
+        user_safe = UserRead.model_validate(user).model_dump()
+        user_safe["profile_image_url"] = get_signed_url(user.profile_image_url)
         return {
             "access_token": access_token,
             "token_type": "bearer",
             "refresh_token": refresh_token,
-            "user": user_dict
+            "user": user_safe
         }
     except HTTPException:
         raise
@@ -127,7 +127,9 @@ class RefreshTokenRequest(BaseModel):
 
 
 @router.post("/refresh")
+@limiter.limit("10/minute")
 def refresh_token(
+    request: Request,
     data: RefreshTokenRequest,
     db_session: Session = Depends(get_session)
 ):
@@ -202,13 +204,13 @@ def refresh_token(
                 )
             )
 
-        user_dict = user.model_dump()
-        user_dict["profile_image_url"] = get_signed_url(user.profile_image_url)
+        user_safe = UserRead.model_validate(user).model_dump()
+        user_safe["profile_image_url"] = get_signed_url(user.profile_image_url)
         return {
             "access_token": access_token,
             "token_type": "bearer",
             "refresh_token": refresh_token_new,
-            "user": user_dict
+            "user": user_safe
         }
     except HTTPException:
         raise
