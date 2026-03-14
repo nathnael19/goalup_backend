@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -16,6 +17,7 @@ from app.api.v1.deps import get_current_active_user, get_current_superuser, get_
 from app.models.user import User, UserRole, UserRead
 from app.core.audit import record_audit_log
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 class TournamentReadWithCompetition(TournamentRead):
@@ -113,11 +115,11 @@ def read_matches(
             
             result.append(em)
         return result
+    except HTTPException:
+        raise
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"ERROR in read_matches: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+        logger.exception("read_matches failed")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @router.get("/{match_id}", response_model=EnrichedMatchRead)
 def read_match(
@@ -162,11 +164,9 @@ def read_match(
         return em
     except HTTPException:
         raise
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"ERROR in read_match({match_id}): {e}")
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+    except Exception:
+        logger.exception("read_match failed")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 @router.put("/{match_id}", response_model=MatchRead)
 def update_match(
