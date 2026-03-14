@@ -182,10 +182,10 @@ def update_user(
 
     # RBAC check for Tournament Admins
     if current_user.role == UserRole.TOURNAMENT_ADMIN:
-        if db_user.tournament_id != current_user.tournament_id:
+        if db_user.created_by_id != current_user.id:
             raise HTTPException(
                 status_code=403,
-                detail="Tournament Admins can only update users in their assigned tournament",
+                detail="Tournament Admins can only update users they created",
             )
         # Prevent role escalation beyond allowed roles
         if user_in.role and user_in.role not in _TOURNAMENT_ADMIN_ALLOWED_ROLES:
@@ -247,10 +247,10 @@ def delete_user(
 
     # RBAC check for Tournament Admins
     if current_user.role == UserRole.TOURNAMENT_ADMIN:
-        if db_user.tournament_id != current_user.tournament_id:
+        if db_user.created_by_id != current_user.id:
             raise HTTPException(
                 status_code=403,
-                detail="Tournament Admins can only delete users in their assigned tournament",
+                detail="Tournament Admins can only delete users they created",
             )
         if db_user.role not in _TOURNAMENT_ADMIN_ALLOWED_ROLES:
             raise HTTPException(
