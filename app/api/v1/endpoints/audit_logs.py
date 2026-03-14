@@ -1,6 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Response
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 from app.core.database import get_session
 from app.models.audit_log import AuditLog, AuditLogRead
 from app.api.v1.deps import get_current_superuser
@@ -21,21 +21,26 @@ def read_audit_logs(
     response: Response,
 ):
     """Retrieve recent audit log entries."""
-    query = select(AuditLog).order_by(AuditLog.timestamp.desc())
+    # Build base filter conditions
+    conditions = []
     if action:
-        query = query.where(AuditLog.action == action)
+        conditions.append(AuditLog.action == action)
     if entity_type:
-        query = query.where(AuditLog.entity_type == entity_type)
+        conditions.append(AuditLog.entity_type == entity_type)
     if entity_id:
-        query = query.where(AuditLog.entity_id == entity_id)
+        conditions.append(AuditLog.entity_id == entity_id)
 
-    total = session.exec(
-        query.with_only_columns(AuditLog.id).order_by(None)
-    ).unique().count()
+    # Count query
+    count_query = select(func.count()).select_from(AuditLog)
+    for cond in conditions:
+        count_query = count_query.where(cond)
+    total = session.exec(count_query).one()
 
-    logs = session.exec(
-        query.offset(offset).limit(limit)
-    ).all()
+    # Data query
+    data_query = select(AuditLog).order_by(AuditLog.timestamp.desc())
+    for cond in conditions:
+        data_query = data_query.where(cond)
+    logs = session.exec(data_query.offset(offset).limit(limit)).all()
 
     response.headers["X-Total-Count"] = str(total)
     return logs
