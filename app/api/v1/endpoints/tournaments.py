@@ -215,6 +215,11 @@ def schedule_tournament(
     # Combine all rounds
     all_rounds = rounds + second_leg_rounds
         
+    # Fetch referees for this tournament to assign them round-robin
+    referees = session.exec(
+        select(User).where(User.role == UserRole.REFEREE, User.tournament_id == tournament_id)
+    ).all()
+    
     # Save matches to database
     current_time = schedule.start_date
     match_count = 0
@@ -230,6 +235,11 @@ def schedule_tournament(
         # If it matches team_count/2 (full round per day), then effective interval is per round.
         
         for t1, t2 in round_pairs:
+            # Assign referee from the pool
+            assigned_referee_id = None
+            if referees:
+                assigned_referee_id = referees[match_count % len(referees)].id
+
             db_match = Match(
                 tournament_id=tournament_id,
                 team_a_id=t1,
@@ -237,7 +247,8 @@ def schedule_tournament(
                 start_time=current_time,
                 status=MatchStatus.scheduled,
                 total_time=schedule.total_time,
-                match_day=round_idx + 1
+                match_day=round_idx + 1,
+                referee_id=assigned_referee_id
             )
             session.add(db_match)
             created_matches.append(db_match)
@@ -322,6 +333,11 @@ def generate_knockout_fixtures(
     # The teams with Byes
     teams_with_bye = team_ids[num_matches_r1 * 2:]
     
+    # Fetch referees for this tournament to assign them round-robin
+    referees = session.exec(
+        select(User).where(User.role == UserRole.REFEREE, User.tournament_id == tournament_id)
+    ).all()
+    
     current_time = schedule.start_date
     created_matches = []
     
@@ -336,6 +352,12 @@ def generate_knockout_fixtures(
     # Generate Round 1 Matches
     for i in range(0, len(teams_playing_r1), 2):
         t1, t2 = teams_playing_r1[i], teams_playing_r1[i+1]
+        
+        # Assign referee from the pool
+        assigned_referee_id = None
+        if referees:
+            assigned_referee_id = referees[len(created_matches) % len(referees)].id
+
         db_match = Match(
             tournament_id=tournament_id,
             team_a_id=t1,
@@ -344,7 +366,8 @@ def generate_knockout_fixtures(
             status=MatchStatus.scheduled,
             total_time=schedule.total_time,
             match_day=1,
-            stage=stage_name
+            stage=stage_name,
+            referee_id=assigned_referee_id
         )
         session.add(db_match)
         created_matches.append(db_match)
