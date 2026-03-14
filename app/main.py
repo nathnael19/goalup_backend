@@ -122,7 +122,7 @@ if settings.ENVIRONMENT == "production":
 def on_startup():
     create_db_and_tables()
     logger.info(
-        "🚀 GoalUp! starting — env=%s | cors=%s",
+        "GoalUp! starting — env=%s | cors=%s",
         settings.ENVIRONMENT,
         settings.BACKEND_CORS_ORIGINS,
     )
