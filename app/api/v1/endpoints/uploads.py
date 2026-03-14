@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
@@ -6,6 +7,7 @@ from app.core.config import settings
 from app.api.v1.deps import get_current_active_user
 from app.models.user import User
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.post("")
@@ -55,8 +57,8 @@ async def upload_file(
             "path": path
         }
         
-    except Exception as e:
-        print(f"Supabase upload error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload image to Supabase: {str(e)}")
+    except Exception:
+        logger.exception("Supabase upload failed")
+        raise HTTPException(status_code=500, detail="Failed to upload image")
     finally:
         await file.close()
