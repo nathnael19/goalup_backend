@@ -76,6 +76,7 @@ class UserRead(SQLModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     created_by_id: Optional[int] = None
+    has_password: bool = False
 
 class UserUpdate(SQLModel):
     email: Optional[str] = None
