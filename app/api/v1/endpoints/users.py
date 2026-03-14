@@ -4,13 +4,16 @@ from sqlmodel import Session, select, func
 from app.core.database import get_session
 from app.models.user import User, UserCreate, UserRead, UserUpdate, UserRole
 from app.core.config import settings
-from app.api.v1.deps import get_current_superuser, get_current_management_admin
+from app.api.v1.deps import get_current_superuser, get_current_management_admin, get_current_active_user
 from app.core.audit import record_audit_log
 from app.core.security import get_password_hash, create_password_reset_token
 from app.core.email import send_invitation_email
 from app.core.supabase_client import get_signed_url
 
 router = APIRouter()
+
+# Roles a Tournament Admin is allowed to create/manage
+_TOURNAMENT_ADMIN_ALLOWED_ROLES = {UserRole.COACH, UserRole.REFEREE}
 
 
 @router.post("/", response_model=UserRead)
@@ -19,13 +22,31 @@ async def create_user(
     session: Session = Depends(get_session),
     user_in: UserCreate,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_management_admin),
 ):
     """
-    Create a new user. Only Super Admins can do this.
+    Create a new user.
+    - Super Admins can create any role.
+    - Tournament Admins can only create COACH or REFEREE, scoped to their tournament.
     If a password is provided it is hashed and stored immediately.
     If no password, sends an invite email with a setup link.
     """
+    # ------------------------------------------------------------------
+    # RBAC guard for Tournament Admins
+    # ------------------------------------------------------------------
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if user_in.role not in _TOURNAMENT_ADMIN_ALLOWED_ROLES:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Tournament Admins can only create users with role COACH or REFEREE, not '{user_in.role}'",
+            )
+        # Force scope to the admin's own tournament & competition
+        user_in.tournament_id = current_user.tournament_id
+        user_in.competition_id = current_user.competition_id
+        # Referees don't belong to a team
+        if user_in.role == UserRole.REFEREE:
+            user_in.team_id = None
+
     normalized_email = (user_in.email or "").strip().lower()
     if not normalized_email:
         raise HTTPException(status_code=400, detail="Email is required")
@@ -56,7 +77,7 @@ async def create_user(
             action="CREATE_USER",
             entity_type="User",
             entity_id=user_in.email,
-            description=f"Super Admin created user {user_in.email} with role {user_in.role}",
+            description=f"{current_user.role} '{current_user.email}' created user {user_in.email} with role {user_in.role}",
         )
 
         session.commit()
@@ -85,10 +106,21 @@ def read_users(
     limit: int = 100,
     response: Response = None,
 ):
-    """List all users. Supports role filtering."""
+    """
+    List users.
+    - Super Admins see all users.
+    - Tournament Admins see only users belonging to their tournament.
+    Supports role filtering via ?role= query param.
+    """
     statement = select(User).where(User.is_deleted == False)  # type: ignore[comparison-overlap]
+
+    # Scope Tournament Admins to their own tournament
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        statement = statement.where(User.tournament_id == current_user.tournament_id)
+
     if role:
         statement = statement.where(User.role == role)
+
     total = session.exec(
         select(func.count()).select_from(statement.subquery())
     ).one()
@@ -109,12 +141,18 @@ def read_user(
     *,
     session: Session = Depends(get_session),
     user_id: int,
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_management_admin),
 ):
-    """Get a specific user by ID. Only Super Admins."""
+    """Get a specific user by ID."""
     db_user = session.get(User, user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Tournament Admins can only read users within their tournament
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if db_user.tournament_id != current_user.tournament_id:
+            raise HTTPException(status_code=403, detail="Not authorized to access this user")
+
     user_dict = db_user.model_dump()
     user_dict["profile_image_url"] = get_signed_url(db_user.profile_image_url)
     return user_dict
@@ -126,15 +164,31 @@ def update_user(
     session: Session = Depends(get_session),
     user_id: int,
     user_in: UserUpdate,
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_management_admin),
 ):
     """
-    Update a user. Only Super Admins.
-    Role/status changes are in our DB; password changes are hashed locally.
+    Update a user.
+    - Super Admins can update any user.
+    - Tournament Admins can only update COACH/REFEREE users in their own tournament,
+      and cannot escalate roles beyond those two.
     """
     db_user = session.get(User, user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # RBAC check for Tournament Admins
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if db_user.tournament_id != current_user.tournament_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Tournament Admins can only update users in their assigned tournament",
+            )
+        # Prevent role escalation beyond allowed roles
+        if user_in.role and user_in.role not in _TOURNAMENT_ADMIN_ALLOWED_ROLES:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Tournament Admins cannot assign role '{user_in.role}'",
+            )
 
     update_data = user_in.model_dump(exclude_unset=True)
 
@@ -159,7 +213,7 @@ def update_user(
         action="UPDATE_USER",
         entity_type="User",
         entity_id=str(user_id),
-        description=f"Super Admin updated user {db_user.email}",
+        description=f"{current_user.role} '{current_user.email}' updated user {db_user.email}",
     )
 
     session.commit()
@@ -174,21 +228,38 @@ def delete_user(
     *,
     session: Session = Depends(get_session),
     user_id: int,
-    current_user: User = Depends(get_current_superuser),
+    current_user: User = Depends(get_current_management_admin),
 ):
-    """Delete a user. Only Super Admins. Removes from DB only."""
+    """
+    Delete (soft) a user.
+    - Super Admins can delete any user.
+    - Tournament Admins can only delete COACH/REFEREE users in their own tournament.
+    """
     db_user = session.get(User, user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     if db_user.id == current_user.id:
-        raise HTTPException(status_code=400, detail="Super Admins cannot delete themselves")
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+
+    # RBAC check for Tournament Admins
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if db_user.tournament_id != current_user.tournament_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Tournament Admins can only delete users in their assigned tournament",
+            )
+        if db_user.role not in _TOURNAMENT_ADMIN_ALLOWED_ROLES:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Tournament Admins cannot delete users with role '{db_user.role}'",
+            )
 
     record_audit_log(
         session,
         action="DELETE_USER",
         entity_type="User",
         entity_id=str(user_id),
-        description=f"Super Admin deleted user {db_user.email}",
+        description=f"{current_user.role} '{current_user.email}' deleted user {db_user.email}",
     )
 
     db_user.is_deleted = True
