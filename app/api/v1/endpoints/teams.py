@@ -67,6 +67,9 @@ def create_team(
     session.add(standing)
     session.commit()
 
+    # The second commit expires db_team — refresh to reload all scalar columns
+    session.refresh(db_team)
+
     # Pre-loading for response
     # We already have tournament from above
     res = db_team.model_dump()
@@ -258,9 +261,10 @@ def delete_team(
     if not db_team:
         raise HTTPException(status_code=404, detail="Team not found")
 
-    # RBAC Check: Only Super Admins can delete teams
+    # RBAC Check: Tournament Admins can only delete teams in their own tournament
     if current_user.role == UserRole.TOURNAMENT_ADMIN:
-        raise HTTPException(status_code=403, detail="Tournament Admins cannot delete teams")
+        if current_user.tournament_id != db_team.tournament_id:
+            raise HTTPException(status_code=403, detail="Tournament Admins can only delete teams in their assigned tournament")
 
     # Audit Log
     record_audit_log(
