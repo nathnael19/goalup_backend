@@ -1,3 +1,4 @@
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Response
 from sqlmodel import Session, select, func
@@ -10,6 +11,7 @@ from app.core.security import get_password_hash, create_password_reset_token
 from app.core.email import send_invitation_email
 from app.core.supabase_client import get_signed_url
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Roles a Tournament Admin is allowed to create/manage
@@ -67,6 +69,7 @@ async def create_user(
         competition_id=user_in.competition_id,
         is_active=True,
         is_superuser=(user_in.role == UserRole.SUPER_ADMIN),
+        created_by_id=current_user.id,
     )
 
     try:
@@ -82,9 +85,10 @@ async def create_user(
 
         session.commit()
         session.refresh(db_user)
-    except Exception as e:
+    except Exception:
         session.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to create user: {str(e)}")
+        logger.exception("Failed to create user")
+        raise HTTPException(status_code=500, detail="Failed to create user")
 
     # If no password given, email an invite link
     if not user_in.password:
@@ -92,9 +96,9 @@ async def create_user(
         invite_link = f"{settings.ADMIN_FRONTEND_URL}/setup-password?token={invite_token}"
         background_tasks.add_task(send_invitation_email, user_in.email, invite_link)
 
-    user_dict = db_user.model_dump()
-    user_dict["profile_image_url"] = get_signed_url(db_user.profile_image_url)
-    return user_dict
+    user_safe = UserRead.model_validate(db_user).model_dump()
+    user_safe["profile_image_url"] = get_signed_url(db_user.profile_image_url)
+    return user_safe
 
 
 @router.get("/", response_model=List[UserRead])
@@ -114,9 +118,9 @@ def read_users(
     """
     statement = select(User).where(User.is_deleted == False)  # type: ignore[comparison-overlap]
 
-    # Scope Tournament Admins to their own tournament
+    # Scope Tournament Admins to their own tournament and only users they created
     if current_user.role == UserRole.TOURNAMENT_ADMIN:
-        statement = statement.where(User.tournament_id == current_user.tournament_id)
+        statement = statement.where(User.created_by_id == current_user.id)
 
     if role:
         statement = statement.where(User.role == role)
@@ -153,9 +157,9 @@ def read_user(
         if db_user.tournament_id != current_user.tournament_id:
             raise HTTPException(status_code=403, detail="Not authorized to access this user")
 
-    user_dict = db_user.model_dump()
-    user_dict["profile_image_url"] = get_signed_url(db_user.profile_image_url)
-    return user_dict
+    user_safe = UserRead.model_validate(db_user).model_dump()
+    user_safe["profile_image_url"] = get_signed_url(db_user.profile_image_url)
+    return user_safe
 
 
 @router.put("/{user_id}", response_model=UserRead)
@@ -218,9 +222,9 @@ def update_user(
 
     session.commit()
     session.refresh(db_user)
-    user_dict = db_user.model_dump()
-    user_dict["profile_image_url"] = get_signed_url(db_user.profile_image_url)
-    return user_dict
+    user_safe = UserRead.model_validate(db_user).model_dump()
+    user_safe["profile_image_url"] = get_signed_url(db_user.profile_image_url)
+    return user_safe
 
 
 @router.delete("/{user_id}")
