@@ -98,6 +98,7 @@ async def create_user(
 
     user_safe = UserRead.model_validate(db_user).model_dump()
     user_safe["profile_image_url"] = get_signed_url(db_user.profile_image_url)
+    user_safe["has_password"] = bool(db_user.hashed_password)
     return user_safe
 
 
@@ -134,6 +135,7 @@ def read_users(
     for u in users:
         u_dict = u.model_dump()
         u_dict["profile_image_url"] = get_signed_url(u.profile_image_url)
+        u_dict["has_password"] = bool(u.hashed_password)
         result.append(u_dict)
     if response is not None:
         response.headers["X-Total-Count"] = str(total)
@@ -159,6 +161,7 @@ def read_user(
 
     user_safe = UserRead.model_validate(db_user).model_dump()
     user_safe["profile_image_url"] = get_signed_url(db_user.profile_image_url)
+    user_safe["has_password"] = bool(db_user.hashed_password)
     return user_safe
 
 
@@ -224,6 +227,7 @@ def update_user(
     session.refresh(db_user)
     user_safe = UserRead.model_validate(db_user).model_dump()
     user_safe["profile_image_url"] = get_signed_url(db_user.profile_image_url)
+    user_safe["has_password"] = bool(db_user.hashed_password)
     return user_safe
 
 
@@ -272,3 +276,48 @@ def delete_user(
     session.commit()
 
     return {"ok": True}
+
+
+@router.post("/{user_id}/resend-setup-email")
+async def resend_setup_email(
+    *,
+    session: Session = Depends(get_session),
+    user_id: int,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_management_admin),
+):
+    """
+    Resend the set-password invitation email to a user who hasn't set one yet.
+    """
+    db_user = session.get(User, user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # RBAC check for Tournament Admins
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if db_user.created_by_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="Tournament Admins can only resend emails to users they created",
+            )
+
+    if db_user.hashed_password:
+        raise HTTPException(
+            status_code=400,
+            detail="User already has a password set. They should use 'Forgot Password' instead.",
+        )
+
+    invite_token = create_password_reset_token(db_user.email, expires_hours=48)
+    invite_link = f"{settings.ADMIN_FRONTEND_URL}/setup-password?token={invite_token}"
+    background_tasks.add_task(send_invitation_email, db_user.email, invite_link)
+
+    record_audit_log(
+        session,
+        action="RESEND_SETUP_EMAIL",
+        entity_type="User",
+        entity_id=db_user.email,
+        description=f"{current_user.role} '{current_user.email}' resent setup email to {db_user.email}",
+    )
+    session.commit()
+
+    return {"ok": True, "message": "Invitation email resent successfully"}
