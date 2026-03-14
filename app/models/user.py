@@ -3,6 +3,7 @@ from typing import Optional
 import uuid
 from enum import Enum
 from sqlmodel import Field, SQLModel
+from pydantic import field_validator
 
 class UserRole(str, Enum):
     SUPER_ADMIN = "SUPER_ADMIN"
@@ -47,6 +48,13 @@ class UserCreate(SQLModel):
     tournament_id: Optional[uuid.UUID] = None
     competition_id: Optional[uuid.UUID] = None
 
+    @field_validator("team_id", "tournament_id", "competition_id", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == "":
+            return None
+        return v
+
 class UserRead(SQLModel):
     id: int
     email: str
@@ -72,3 +80,10 @@ class UserUpdate(SQLModel):
     tournament_id: Optional[uuid.UUID] = None
     competition_id: Optional[uuid.UUID] = None
     profile_image_url: Optional[str] = None
+
+    @field_validator("team_id", "tournament_id", "competition_id", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        if v == "":
+            return None
+        return v
