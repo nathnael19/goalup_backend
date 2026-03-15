@@ -18,7 +18,8 @@ from app.api.v1.deps import (
     get_current_superuser, 
     get_current_coach, 
     get_current_referee,
-    get_current_match_manager
+    get_current_match_manager,
+    get_current_management_admin
 )
 from app.models.user import User, UserRole, UserRead
 from app.core.audit import record_audit_log
@@ -44,7 +45,7 @@ def create_match(
     *, 
     session: Session = Depends(get_session), 
     match: MatchCreate,
-    current_user: User = Depends(get_current_superuser)
+    current_user: User = Depends(get_current_management_admin)
 ):
 
     # Verify tournament and teams exist
@@ -52,6 +53,12 @@ def create_match(
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
     
+    # RBAC Scoping Check for Tournament Admins
+    if current_user.role == UserRole.TOURNAMENT_ADMIN:
+        if current_user.tournament_id and current_user.tournament_id != match.tournament_id:
+            raise HTTPException(status_code=403, detail="Tournament Admins can only create matches for their assigned tournament")
+        if current_user.competition_id and tournament.competition_id != current_user.competition_id:
+            raise HTTPException(status_code=403, detail="Tournament Admins can only create matches for their assigned competition")
     team_a = session.get(Team, match.team_a_id)
     team_b = session.get(Team, match.team_b_id)
     if not team_a or not team_b:
