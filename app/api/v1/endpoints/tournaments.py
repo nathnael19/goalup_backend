@@ -153,7 +153,7 @@ def schedule_tournament(
     session: Session = Depends(get_session), 
     tournament_id: uuid.UUID, 
     schedule: TournamentScheduleCreate,
-    current_user: User = Depends(get_current_management_admin)
+    current_user: User = Depends(get_current_tournament_admin)
 ):
     tournament = session.get(Tournament, tournament_id)
     if not tournament:
@@ -281,7 +281,7 @@ def generate_knockout_fixtures(
     session: Session = Depends(get_session), 
     tournament_id: uuid.UUID, 
     schedule: TournamentKnockoutCreate,
-    current_user: User = Depends(get_current_management_admin)
+    current_user: User = Depends(get_current_tournament_admin)
 ):
     tournament = session.get(Tournament, tournament_id)
     if not tournament:
