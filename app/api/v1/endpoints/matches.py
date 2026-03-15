@@ -190,20 +190,15 @@ def update_match(
     session: Session = Depends(get_session), 
     match_id: uuid.UUID, 
     match: MatchUpdate,
-    current_user: User = Depends(get_current_match_manager)
+    current_user: User = Depends(get_current_referee)
 ):
     db_match = session.get(Match, match_id)
     if not db_match:
         raise HTTPException(status_code=404, detail="Match not found")
     
-    # RBAC Check
-    if current_user.role == UserRole.REFEREE:
-        if db_match.referee_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Referees can only update matches they are assigned to")
-    elif current_user.role == UserRole.TOURNAMENT_ADMIN:
-        if db_match.tournament_id != current_user.tournament_id:
-             raise HTTPException(status_code=403, detail="Tournament admins can only update matches in their own tournament")
-    # SUPER_ADMIN is already allowed by get_current_match_manager
+    # RBAC Check: ONLY the assigned referee can update live events or start/finish match
+    if db_match.referee_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the assigned referee can update this match")
 
     # Lock match data if finished for > 1 hour
     if db_match.status == "finished" and db_match.finished_at:
@@ -299,29 +294,19 @@ def set_lineups(
     lineups: List[Lineup],
     formation_a: Optional[str] = Query(None),
     formation_b: Optional[str] = Query(None),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_coach)
 ):
     db_match = session.get(Match, match_id)
     if not db_match:
         raise HTTPException(status_code=404, detail="Match not found")
 
-    # RBAC Check
-    if current_user.role == UserRole.COACH:
-        if not current_user.team_id:
-            raise HTTPException(status_code=403, detail="Coach user has no assigned team")
-        for l in lineups:
-            if str(l.team_id) != str(current_user.team_id):
-                raise HTTPException(status_code=403, detail="Coaches can only manage their own team's lineup")
-    elif current_user.role == UserRole.REFEREE:
-        if db_match.referee_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Referees can only manage lineups for matches they are assigned to")
-    elif current_user.role == UserRole.TOURNAMENT_ADMIN:
-        if db_match.tournament_id != current_user.tournament_id:
-            raise HTTPException(status_code=403, detail="Tournament admins can only manage lineups for matches in their tournament")
-    elif current_user.role == UserRole.SUPER_ADMIN:
-        pass # Always allowed
-    else:
-        raise HTTPException(status_code=403, detail="This role is not allowed to set lineups")
+    # RBAC Check: ONLY the coach of the specific team can set lineups
+    if not current_user.team_id:
+        raise HTTPException(status_code=403, detail="Coach user has no assigned team")
+    
+    for l in lineups:
+        if str(l.team_id) != str(current_user.team_id):
+            raise HTTPException(status_code=403, detail="Coaches can only manage their own team's lineup")
     
     # Check lock
     if db_match.status == "finished" and db_match.finished_at:
