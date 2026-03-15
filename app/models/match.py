@@ -10,12 +10,12 @@ class MatchStatus(str, Enum):
     finished = "finished"
 
 class MatchBase(SQLModel):
-    tournament_id: uuid.UUID = Field(foreign_key="tournament.id",ondelete="CASCADE")
-    team_a_id: uuid.UUID = Field(foreign_key="team.id",ondelete="CASCADE")
-    team_b_id: uuid.UUID = Field(foreign_key="team.id",ondelete="CASCADE")
+    tournament_id: uuid.UUID = Field(foreign_key="tournament.id", index=True, ondelete="CASCADE")
+    team_a_id: uuid.UUID = Field(foreign_key="team.id", index=True, ondelete="CASCADE")
+    team_b_id: uuid.UUID = Field(foreign_key="team.id", index=True, ondelete="CASCADE")
     score_a: int = Field(default=0)
     score_b: int = Field(default=0)
-    status: MatchStatus = Field(default=MatchStatus.scheduled)
+    status: MatchStatus = Field(default=MatchStatus.scheduled, index=True)
     start_time: datetime
     additional_time_first_half: int = Field(default=0)
     additional_time_second_half: int = Field(default=0)
@@ -31,7 +31,7 @@ class MatchBase(SQLModel):
     is_extra_time: bool = Field(default=False)
     formation_a: str = Field(default="4-3-3")
     formation_b: str = Field(default="4-3-3")
-    referee_id: Optional[int] = Field(default=None, foreign_key="users.id", nullable=True)
+    referee_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True, nullable=True)
 
 class Match(MatchBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
