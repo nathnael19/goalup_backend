@@ -27,6 +27,7 @@ class PlayerBase(SQLModel):
     yellow_cards: int = Field(default=0)
     red_cards: int = Field(default=0)
     image_url: Optional[str] = None
+    position: str | None = Field(default=None, max_length=255)
 
     @field_validator("position", mode="before")
     @classmethod
