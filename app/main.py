@@ -16,6 +16,7 @@ from app.core.realtime import realtime_manager, ConnectionInfo
 from app.core.database import engine
 from app.models.user import User
 from sqlmodel import Session
+import asyncio
 import logging
 import os
 import time
@@ -51,7 +52,7 @@ class RealtimeBroadcastMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response: Response = await call_next(request)
 
-        # Phase 1: broadcast an `entity_changed` event after successful mutations.
+        # Fire-and-forget broadcast so response returns immediately
         if request.url.path.startswith(settings.API_V1_STR):
             if request.method in ("POST", "PUT", "PATCH", "DELETE") and 200 <= response.status_code < 300:
                 rel_path = request.url.path[len(settings.API_V1_STR):].lstrip("/")
@@ -62,17 +63,23 @@ class RealtimeBroadcastMiddleware(BaseHTTPMiddleware):
                     "PATCH": "updated",
                     "DELETE": "deleted",
                 }.get(request.method, "updated")
-                await realtime_manager.broadcast(
-                    {
-                        "type": "entity_changed",
-                        "entity": entity,
-                        "action": action,
-                        "id": None,
-                        "path": request.url.path,
-                        "method": request.method,
-                        "status": response.status_code,
-                    }
-                )
+                payload = {
+                    "type": "entity_changed",
+                    "entity": entity,
+                    "action": action,
+                    "id": None,
+                    "path": request.url.path,
+                    "method": request.method,
+                    "status": response.status_code,
+                }
+
+                async def _broadcast():
+                    try:
+                        await realtime_manager.broadcast(payload)
+                    except Exception as e:
+                        logger.warning("Realtime broadcast failed: %s", e)
+
+                asyncio.create_task(_broadcast())
 
         return response
 
