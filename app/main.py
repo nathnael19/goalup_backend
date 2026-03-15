@@ -1,8 +1,9 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import Response
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import Response, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.exceptions import RequestValidationError
 from starlette.websockets import WebSocket, WebSocketDisconnect
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -93,6 +94,54 @@ app = FastAPI(
 # Attach rate limiter state and handler
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# ─── Error handling: consistent JSON and user-facing messages ─────────────────
+def _validation_error_message(err: RequestValidationError) -> str:
+    """Turn FastAPI/Pydantic validation errors into one readable message."""
+    errors = err.errors()
+    if not errors:
+        return "Invalid request data."
+    first = errors[0]
+    loc = " ".join(str(x) for x in first.get("loc", ()) if x != "body")
+    msg = first.get("msg", "Invalid value")
+    if loc:
+        return f"{loc}: {msg}"
+    return msg
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
+    """Ensure every HTTP error returns { \"detail\": \"single message\" }."""
+    detail = exc.detail
+    if isinstance(detail, list):
+        detail = " ".join(str(d.get("msg", d)) for d in detail) if detail else "Error"
+    return JSONResponse(status_code=exc.status_code, content={"detail": str(detail)})
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    _request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Return 422 with a single user-friendly validation message."""
+    message = _validation_error_message(exc)
+    return JSONResponse(
+        status_code=422,
+        content={"detail": message},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Catch-all: log and return a safe message (no internal details leaked)."""
+    logger.exception("Unhandled error: %s", exc)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "An unexpected error occurred. Please try again later.",
+        },
+    )
+
 
 # ─── Middleware (order matters — outermost wrapper added last) ─────────────────
 
