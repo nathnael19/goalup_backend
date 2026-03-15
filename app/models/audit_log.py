@@ -8,7 +8,7 @@ class AuditLogBase(SQLModel):
     entity_type: str = Field(max_length=50) # Match, Team, Player, Goal, etc.
     entity_id: str = Field(max_length=255)
     description: str = Field(max_length=500)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 class AuditLog(AuditLogBase, table=True):
     __tablename__ = "audit_logs"
