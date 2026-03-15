@@ -122,30 +122,39 @@ def read_teams(
 
 @router.get("/{team_id}", response_model=TeamReadDetail)
 def read_team(
-    *, 
-    session: Session = Depends(get_session), 
+    *,
+    session: Session = Depends(get_session),
     team_id: uuid.UUID,
     current_user: User = Depends(get_current_active_user)
 ):
-    team = session.get(Team, team_id)
+    # Single query with eager load: players, home_matches, away_matches, standings
+    query = (
+        select(Team)
+        .where(Team.id == team_id)
+        .options(
+            selectinload(Team.players),
+            selectinload(Team.home_matches),
+            selectinload(Team.away_matches),
+            selectinload(Team.standings),
+        )
+    )
+    team = session.exec(query).first()
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
-    
+
     # RBAC Check
     if current_user.role == UserRole.TOURNAMENT_ADMIN:
         if current_user.tournament_id and team.tournament_id != current_user.tournament_id:
-             raise HTTPException(status_code=403, detail="Not authorized to access this team")
+            raise HTTPException(status_code=403, detail="Not authorized to access this team")
         if current_user.competition_id:
-            # Check if team's tournament belongs to the competition
             tournament = session.get(Tournament, team.tournament_id)
             if tournament and tournament.competition_id != current_user.competition_id:
                 raise HTTPException(status_code=403, detail="Not authorized to access this team")
-    
-    # Combine home and away matches
+
+    # Combine home and away matches (already loaded)
     all_matches = team.home_matches + team.away_matches
-    # Sort by start_time descending
     all_matches.sort(key=lambda x: x.start_time, reverse=True)
-    
+
     # Categorize players into roster
     roster_data = {
         "goalkeepers": [],
@@ -153,7 +162,6 @@ def read_team(
         "midfielders": [],
         "forwards": []
     }
-    
     for p in team.players:
         pos = p.position.lower()
         if pos == "gk":
@@ -164,25 +172,28 @@ def read_team(
             roster_data["midfielders"].append(p)
         elif pos in ["st", "lw", "rw"]:
             roster_data["forwards"].append(p)
-    
-    # Create the detailed response
+
+    # Batch sign: team logo + all player image_urls
+    paths_to_sign = [team.logo_url] if team.logo_url else []
+    for p in team.players:
+        if p.image_url:
+            paths_to_sign.append(p.image_url)
+    signed = get_signed_urls_batch(paths_to_sign) if paths_to_sign else {}
+
     response_data = team.model_dump()
+    response_data["logo_url"] = signed.get(team.logo_url, "") if team.logo_url else ""
     response_data["roster"] = roster_data
     response_data["standings"] = team.standings
     response_data["matches"] = all_matches
-    
-    # Sign logo
-    response_data["logo_url"] = get_signed_url(team.logo_url)
-    
-    # Sign player photos in roster
+
     for category in roster_data:
         signed_players = []
         for p in roster_data[category]:
-             p_dict = p.model_dump()
-             p_dict["image_url"] = get_signed_url(p.image_url)
-             signed_players.append(p_dict)
+            p_dict = p.model_dump()
+            p_dict["image_url"] = signed.get(p.image_url, "") if p.image_url else ""
+            signed_players.append(p_dict)
         roster_data[category] = signed_players
-    
+
     return response_data
 
 
