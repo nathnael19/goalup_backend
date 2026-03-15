@@ -337,12 +337,13 @@ def set_lineups(
         raise HTTPException(status_code=404, detail="Match not found")
 
     # RBAC Check: ONLY the coach of the specific team can set lineups
-    if not current_user.team_id:
-        raise HTTPException(status_code=403, detail="Coach user has no assigned team")
-    
-    for l in lineups:
-        if str(l.team_id) != str(current_user.team_id):
-            raise HTTPException(status_code=403, detail="Coaches can only manage their own team's lineup")
+    if current_user.role == UserRole.COACH:
+        if not current_user.team_id:
+            raise HTTPException(status_code=403, detail="Coach user has no assigned team")
+        
+        # The frontend submits both teams' lineups simultaneously. 
+        # Safely discard the opponent's lineup instead of throwing a 403.
+        lineups = [l for l in lineups if str(l.team_id) == str(current_user.team_id)]
     
     # Check lock
     if db_match.status == "finished" and db_match.finished_at:
