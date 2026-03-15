@@ -198,21 +198,34 @@ def read_match(
         logger.exception("read_match failed")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-@router.put("/{match_id}", response_model=MatchRead)
+@router.put("/{match_id}", response_model=EnrichedMatchRead)
 def update_match(
     *, 
     session: Session = Depends(get_session), 
     match_id: uuid.UUID, 
     match: MatchUpdate,
-    current_user: User = Depends(get_current_referee)
+    current_user: User = Depends(get_current_match_manager)
 ):
     db_match = session.get(Match, match_id)
     if not db_match:
         raise HTTPException(status_code=404, detail="Match not found")
     
-    # RBAC Check: ONLY the assigned referee can update live events or start/finish match
-    if db_match.referee_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Only the assigned referee can update this match")
+    # RBAC Check
+    if current_user.role == UserRole.REFEREE:
+        if db_match.referee_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Referees can only update matches they are assigned to")
+    
+    match_data = match.model_dump(exclude_unset=True)
+
+    # SECURE STATUS TRANSITIONS: Only Referees can start/finish matches
+    if "status" in match_data and match_data["status"] != db_match.status:
+        if current_user.role != UserRole.REFEREE:
+            raise HTTPException(
+                status_code=403, 
+                detail="Only the assigned referee can change a match status (start/finish)"
+            )
+        if db_match.referee_id != current_user.id:
+             raise HTTPException(status_code=403, detail="Only the assigned referee can start this match")
 
     # Lock match data if finished for > 1 hour
     if db_match.status == "finished" and db_match.finished_at:
@@ -225,7 +238,7 @@ def update_match(
                 detail="Match data is locked and cannot be changed after 1 hour of completion"
             )
 
-    match_data = match.model_dump(exclude_unset=True)
+    # (match_data was already dumped above for RBAC check)
     
     # Auto-set finished_at when status becomes finished
     if match_data.get("status") == "finished" and db_match.status != "finished":
@@ -252,10 +265,10 @@ def update_match(
             )
         ).all()
         
-        if len(team_a_lineup) < 11 or len(team_b_lineup) < 11:
+        if len(team_a_lineup) < 7 or len(team_b_lineup) < 7:
             raise HTTPException(
                 status_code=400,
-                detail="Starting XI must have at least 11 players for both teams before starting the match"
+                detail="Starting XI must have at least 7 players (standard minimum) for both teams before starting the match"
             )
 
     for key, value in match_data.items():
@@ -274,7 +287,9 @@ def update_match(
     
     session.commit()
     session.refresh(db_match)
-    return db_match
+    
+    # Return enriched version for frontend
+    return read_match(session=session, match_id=db_match.id, current_user=current_user)
 
 @router.delete("/{match_id}")
 def delete_match(
