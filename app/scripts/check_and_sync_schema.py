@@ -17,7 +17,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from sqlalchemy import inspect, text
-from sqlalchemy.types import BigInteger, Boolean, DateTime, Integer, String, Text
+from sqlalchemy.types import INTEGER, VARCHAR, BigInteger, Boolean, DateTime, Integer, String, Text
 from sqlmodel import SQLModel
 
 # Import all table models so they are registered with SQLModel.metadata
@@ -123,6 +123,42 @@ def _get_expected_columns(table_name: str) -> dict[str, str]:
     }
 
 
+def _get_db_column_types(inspector, table_name: str) -> dict[str, str]:
+    """Column name -> compiled SQL type for columns that exist in the DB."""
+    result = {}
+    dialect = engine.dialect
+    for c in inspector.get_columns(table_name):
+        t = c.get("type")
+        if t is not None:
+            result[c["name"]] = t.compile(dialect=dialect)
+    return result
+
+
+def _normalize_type_for_compare(sql_type: str) -> str:
+    """Normalize SQL type string for comparison (e.g. INTEGER vs INT4, VARCHAR vs CHARACTER VARYING)."""
+    s = sql_type.lower().strip()
+    s = " ".join(s.split())
+    # Integer family
+    if s in ("int4", "int8", "int2"):
+        return {"int4": "integer", "int8": "bigint", "int2": "smallint"}[s]
+    if s in ("integer", "bigint", "smallint", "serial", "bigserial", "smallserial"):
+        return s
+    # Varchar family (ignore length for comparison)
+    if s.startswith("character varying(") or s.startswith("character varying "):
+        return "varchar"
+    if s.startswith("varchar(") or s.startswith("varchar "):
+        return "varchar"
+    if s in ("character varying", "varchar"):
+        return "varchar"
+    # Timestamp family
+    if "timestamp" in s or "timestamptz" in s:
+        return "timestamp"
+    if s == "date":
+        return "date"
+    # Rest: boolean, text, uuid, jsonb, etc. – use as-is
+    return s
+
+
 def run_compare_and_sync(apply: bool = False, update_models: bool = False) -> bool:
     """Compare schema and optionally apply changes. Returns True if no errors."""
     inspector = inspect(engine)
@@ -166,7 +202,6 @@ def run_compare_and_sync(apply: bool = False, update_models: bool = False) -> bo
         for t in sorted(missing_cols_by_table.keys()):
             for col_name, col_type in missing_cols_by_table[t]:
                 print(f"  - {t}.{col_name} ({col_type})")
-                # PostgreSQL: quote identifiers (lowercase table names from metadata)
                 alter_statements.append(
                     f'ALTER TABLE "{t}" ADD COLUMN "{col_name}" {col_type};'
                 )
@@ -176,7 +211,6 @@ def run_compare_and_sync(apply: bool = False, update_models: bool = False) -> bo
                     conn.execute(text(stmt))
             print("Applied ALTER TABLE for missing columns.")
         elif alter_statements:
-            # Write SQL file for manual review/run
             out_path = "sync_schema_migration.sql"
             with open(out_path, "w") as f:
                 f.write("-- Generated migration: add columns in models but missing in DB\n")
@@ -185,6 +219,47 @@ def run_compare_and_sync(apply: bool = False, update_models: bool = False) -> bo
             print(f"Wrote {len(alter_statements)} ALTER(s) to {out_path} for manual run.")
     else:
         print("\nAll model columns exist in DB.")
+
+    # ---- 2b) Report / fix column type mismatches (model expected vs DB actual) ----
+    type_mismatches: list[tuple[str, str, str, str]] = []  # (table, col, expected_type, actual_type)
+    for table_name in expected_tables:
+        if table_name not in db_tables:
+            continue
+        expected_cols = _get_expected_columns(table_name)
+        db_col_types = _get_db_column_types(inspector, table_name)
+        for col_name in expected_cols:
+            if col_name not in db_col_types:
+                continue
+            expected_type = expected_cols[col_name]
+            actual_type = db_col_types[col_name]
+            if _normalize_type_for_compare(expected_type) != _normalize_type_for_compare(actual_type):
+                type_mismatches.append((table_name, col_name, expected_type, actual_type))
+
+    type_alter_statements: list[str] = []
+    if type_mismatches:
+        print("\nColumn type mismatches (MODEL expected vs DB actual):")
+        for table_name, col_name, expected_type, actual_type in sorted(type_mismatches):
+            print(f"  - {table_name}.{col_name}: expected {expected_type}, DB has {actual_type}")
+            type_alter_statements.append(
+                f'ALTER TABLE "{table_name}" ALTER COLUMN "{col_name}" TYPE {expected_type};'
+            )
+        if apply and type_alter_statements:
+            with engine.begin() as conn:
+                for stmt in type_alter_statements:
+                    conn.execute(text(stmt))
+            print("Applied ALTER COLUMN TYPE for type mismatches.")
+        elif type_alter_statements:
+            out_path = "sync_schema_migration.sql"
+            mode = "a" if Path(out_path).exists() else "w"
+            with open(out_path, mode) as f:
+                if mode == "w":
+                    f.write("-- Generated schema sync migration\n")
+                f.write("\n-- Column type fixes (model expected type)\n")
+                for stmt in type_alter_statements:
+                    f.write(stmt + "\n")
+            print(f"Wrote {len(type_alter_statements)} ALTER COLUMN TYPE(s) to {out_path}.")
+    else:
+        print("\nAll column types match between models and DB.")
 
     # ---- 3) Report tables in DB not in models ----
     if extra_tables:
