@@ -9,7 +9,7 @@ class TournamentBase(SQLModel):
     name: str
     year: int
     type: str = Field(default="league") # "league", "knockout", "group_knockout"
-    competition_id: Optional[uuid.UUID] = Field(default=None, foreign_key="competition.id")
+    competition_id: Optional[uuid.UUID] = Field(default=None, foreign_key="competition.id", index=True)
     knockout_legs: int = Field(default=1) # 1 or 2
     has_third_place_match: bool = Field(default=False)
 
