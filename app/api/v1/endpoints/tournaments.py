@@ -10,7 +10,7 @@ from app.api.v1.deps import get_current_tournament_admin, get_current_superuser,
 from sqlalchemy.orm import selectinload
 from app.models.user import User, UserRole
 from app.core.audit import record_audit_log
-from app.core.supabase_client import get_signed_url
+from app.core.supabase_client import get_signed_url, get_signed_urls_batch
 
 router = APIRouter()
 
@@ -46,57 +46,69 @@ def read_tournaments(
         query = query.where(Tournament.competition_id == current_user.competition_id)
             
     tournaments = session.exec(query).all()
-    
+
+    paths = [t.competition.image_url for t in tournaments if t.competition and t.competition.image_url]
+    signed = get_signed_urls_batch(paths) if paths else {}
+
     results = []
     for t in tournaments:
         t_dict = t.model_dump()
         if t.competition:
             comp_dict = t.competition.model_dump()
-            comp_dict["image_url"] = get_signed_url(t.competition.image_url)
+            comp_dict["image_url"] = signed.get(t.competition.image_url, "") if t.competition.image_url else ""
             t_dict["competition"] = comp_dict
         results.append(t_dict)
-        
+
     return results
 
 @router.get("/{tournament_id}", response_model=TournamentReadWithTeams)
 def read_tournament(
-    *, 
-    session: Session = Depends(get_session), 
+    *,
+    session: Session = Depends(get_session),
     tournament_id: uuid.UUID,
     current_user: User = Depends(get_current_active_user)
 ):
+    # Single query with eager load: competition + registered_teams (teams in this tournament)
+    query = (
+        select(Tournament)
+        .where(Tournament.id == tournament_id)
+        .options(
+            selectinload(Tournament.competition),
+            selectinload(Tournament.registered_teams),
+        )
+    )
+    tournament = session.exec(query).first()
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+
     if current_user.role == UserRole.TOURNAMENT_ADMIN:
         if current_user.tournament_id and current_user.tournament_id != tournament_id:
             raise HTTPException(status_code=403, detail="Not authorized to access this tournament")
-        # If they are a tournament admin but have competition_id, they can see tournaments in that competition
-        # We should check if the tournament belongs to their competition
-        db_tournament = session.get(Tournament, tournament_id)
-        if db_tournament and current_user.competition_id and db_tournament.competition_id != current_user.competition_id:
-             raise HTTPException(status_code=403, detail="Not authorized to access this tournament")
+        if current_user.competition_id and tournament.competition_id != current_user.competition_id:
+            raise HTTPException(status_code=403, detail="Not authorized to access this tournament")
 
-    tournament = session.get(Tournament, tournament_id)
-    if not tournament:
-        raise HTTPException(status_code=404, detail="Tournament not found")
-        
     res = tournament.model_dump()
-    
-    # ... rest of the logic
-    # (Leaving rest unchanged for now, will use multi_replace if needed, but the view_file showed the whole file)
-    # Actually, I'll just use the full logic here to avoid messing up.
-    
-    # Include competition data with signed image URL
+
+    # Collect all paths for batch signed URL (competition image + all team logos)
+    paths_to_sign = []
+    if tournament.competition and tournament.competition.image_url:
+        paths_to_sign.append(tournament.competition.image_url)
+    for team in tournament.registered_teams:
+        if team.logo_url:
+            paths_to_sign.append(team.logo_url)
+    signed = get_signed_urls_batch(paths_to_sign) if paths_to_sign else {}
+
     if tournament.competition:
         comp_dict = tournament.competition.model_dump()
-        comp_dict["image_url"] = get_signed_url(tournament.competition.image_url)
+        comp_dict["image_url"] = signed.get(tournament.competition.image_url, "") if tournament.competition.image_url else ""
         res["competition"] = comp_dict
-    
-    # Also sign team logos in the teams list
+
     teams_signed = []
-    for team in tournament.teams:
+    for team in tournament.registered_teams:
         team_dict = team.model_dump()
-        team_dict["logo_url"] = get_signed_url(team.logo_url)
+        team_dict["logo_url"] = signed.get(team.logo_url, "") if team.logo_url else ""
         teams_signed.append(team_dict)
-    
+
     res["teams"] = teams_signed
     return res
 
