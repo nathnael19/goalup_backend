@@ -345,8 +345,12 @@ def set_lineups(
         # Safely discard the opponent's lineup instead of throwing a 403.
         lineups = [l for l in lineups if str(l.team_id) == str(current_user.team_id)]
     
-    # Check lock
-    if db_match.status == "finished" and db_match.finished_at:
+    # Check lock: Lineups can only be changed if the match has not started yet
+    if db_match.status != "scheduled":
+        raise HTTPException(
+            status_code=403, 
+            detail="Lineups and formations cannot be changed after the match has started"
+        )
         import datetime
         lock_time = db_match.finished_at + datetime.timedelta(hours=1)
         if datetime.datetime.now() > lock_time:
