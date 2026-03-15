@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.database import get_session
 from app.models.competition import Competition, CompetitionCreate, CompetitionRead, CompetitionUpdate
-from app.core.supabase_client import get_signed_url
+from app.core.supabase_client import get_signed_url, get_signed_urls_batch
 from app.api.v1.deps import get_current_management_admin, get_current_active_user
 from app.models.user import User, UserRole
 from app.models.team import Team
@@ -86,10 +86,12 @@ def read_competitions(
     else:
         raise HTTPException(status_code=403, detail="Not authorised to view competitions")
         
+    paths = [c.image_url for c in competitions if c.image_url]
+    signed = get_signed_urls_batch(paths) if paths else {}
     results = []
     for c in competitions:
         c_dict = c.model_dump()
-        c_dict["image_url"] = get_signed_url(c.image_url)
+        c_dict["image_url"] = signed.get(c.image_url, "") if c.image_url else ""
         results.append(c_dict)
     return results
 
