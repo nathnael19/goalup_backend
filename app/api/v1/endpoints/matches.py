@@ -75,54 +75,68 @@ def create_match(
 
 @router.get("/", response_model=List[EnrichedMatchRead])
 def read_matches(
-    *, 
-    session: Session = Depends(get_session), 
-    offset: int = 0, 
+    *,
+    session: Session = Depends(get_session),
+    offset: int = 0,
     limit: int = 100,
     current_user: User = Depends(get_current_active_user),
     tournament_id: Optional[uuid.UUID] = None,
+    enriched: bool = Query(True, description="If false, omit lineups/goals/cards/substitutions for faster list/dashboard"),
 ):
     try:
-        query = select(Match).options(
+        # Light load for list/dashboard: only tournament, teams, referee
+        base_options = [
             selectinload(Match.tournament).selectinload(Tournament.competition),
             selectinload(Match.team_a),
             selectinload(Match.team_b),
-            selectinload(Match.lineups).selectinload(Lineup.player),
-            selectinload(Match.goals_list).selectinload(Goal.player),
-            selectinload(Match.goals_list).selectinload(Goal.assistant),
-            selectinload(Match.cards_list).selectinload(Card.player),
-            selectinload(Match.substitutions).selectinload(Substitution.player_in),
-            selectinload(Match.substitutions).selectinload(Substitution.player_out),
             selectinload(Match.referee),
-        )
+        ]
+        if enriched:
+            base_options.extend([
+                selectinload(Match.lineups).selectinload(Lineup.player),
+                selectinload(Match.goals_list).selectinload(Goal.player),
+                selectinload(Match.goals_list).selectinload(Goal.assistant),
+                selectinload(Match.cards_list).selectinload(Card.player),
+                selectinload(Match.substitutions).selectinload(Substitution.player_in),
+                selectinload(Match.substitutions).selectinload(Substitution.player_out),
+            ])
+
+        query = select(Match).options(*base_options)
 
         if current_user.role == UserRole.REFEREE:
             query = query.where(Match.referee_id == current_user.id)
 
         if tournament_id:
             query = query.where(Match.tournament_id == tournament_id)
-            
+
         matches = session.exec(query.offset(offset).limit(limit)).all()
         result = []
         for m in matches:
             em = EnrichedMatchRead.model_validate(m)
-            
-            # Tournament info (already loaded)
+
             if m.tournament:
                 tournament_dict = TournamentReadWithCompetition.model_validate(m.tournament).model_dump()
                 if m.tournament.competition:
-                    tournament_dict['competition'] = CompetitionRead.model_validate(m.tournament.competition).model_dump()
+                    tournament_dict["competition"] = CompetitionRead.model_validate(m.tournament.competition).model_dump()
                 em.tournament = TournamentReadWithCompetition(**tournament_dict)
-            
+
             em.team_a = m.team_a
             em.team_b = m.team_b
-            
-            # Use pre-loaded relationships
-            em.lineups = [LineupReadWithPlayer.model_validate(l) for l in m.lineups]
-            em.goals = [GoalReadWithPlayer.model_validate(g) for g in m.goals_list]
-            em.cards = [CardReadWithPlayer.model_validate(c) for c in m.cards_list]
-            em.substitutions = [SubstitutionReadWithPlayers.model_validate(s) for s in m.substitutions]
-            
+
+            if enriched:
+                em.lineups = [LineupReadWithPlayer.model_validate(l) for l in m.lineups]
+                em.goals = [GoalReadWithPlayer.model_validate(g) for g in m.goals_list]
+                em.cards = [CardReadWithPlayer.model_validate(c) for c in m.cards_list]
+                em.substitutions = [SubstitutionReadWithPlayers.model_validate(s) for s in m.substitutions]
+            else:
+                em.lineups = []
+                em.goals = []
+                em.cards = []
+                em.substitutions = []
+
+            if m.referee:
+                em.referee = UserRead.model_validate(m.referee)
+
             result.append(em)
         return result
     except HTTPException:
